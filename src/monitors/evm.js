@@ -16,6 +16,18 @@ const ACCUM_COUNT       = Number(process.env.ACCUM_COUNT               || 3);
 const ACCUM_WIN_MIN     = Number(process.env.ACCUM_WIN_MIN             || 15);
 const CHAINFLIP_MIN_USD = Number(process.env.CHAINFLIP_MIN_USD         || 500_000);
 
+// CEX hot wallets — suppress rapid accumulation alerts for these receivers
+const CEX_RECEIVERS = new Set([
+  '0x28c6c06298d514db089934071355e5743bf21d60', // Binance Hot Wallet
+  '0x21a31ee1afc51d94c2efccaa2092ad1028285549', // Binance Cold Wallet
+  '0xdfd5293d8e347dfe59e90efd55b2956a1343963d', // Binance
+  '0xf977814e90da44bfa03b6295a0616a897441acec', // Binance
+  '0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43', // Coinbase
+  '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // Coinbase
+  '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // OKX
+  '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // Kraken
+]);
+
 // Known L2 bridge contracts
 const BRIDGES = {
   '0x99c9fc46f92e8a1c0dec1b1747d010903e884be1': 'Optimism Bridge',
@@ -131,6 +143,7 @@ async function checkChainflip(tx, usdValue, chain) {
 async function checkRapidAccumulation(tx, usdValue, chain) {
   if (usdValue < ACCUM_MIN_USD) return;
   if (!tx.to) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
   const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
