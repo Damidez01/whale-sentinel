@@ -27,6 +27,12 @@ const CEX_RECEIVERS = new Set([
   '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // OKX
   '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // Kraken
   '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', // Tornado Router
+  '0xa1abfA21f80ecf401bd41365adBb6fEF6fEfDF09', // Bybit
+  '0xe401A6A38024d8f5aB88f1B08cad476cCaCA45E8', // Bybit
+  '0xEDc7001e99a37c3D23b5f7974F837387e09f9C93', // Coinbase Deposit
+  '0xf584F8728B874a6a5c7A8d4d387C9aae9172D621', // Jump Trading
+  '0x62425cD6BDcB6bFE51558EA465B063486B70dc9f', // ByBIt
+  '0xb5d85CBf7cB3EE0D56b3bB207D5Fc4B82f43F511', // Coinbase
 ]);
 
 // Known L2 bridge contracts

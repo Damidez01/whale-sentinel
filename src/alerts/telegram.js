@@ -27,21 +27,26 @@ function buildMessage(alert) {
     separator,
   ];
 
+  // Explorer link — per chain
   if (alert.txHash) {
     const explorers = {
       ETH:  `https://etherscan.io/tx/${alert.txHash}`,
       BASE: `https://basescan.org/tx/${alert.txHash}`,
       ARB:  `https://arbiscan.io/tx/${alert.txHash}`,
       THOR: `https://thorchain.net/tx/${alert.txHash}`,
-
     };
     if (explorers[alert.chain]) {
       lines.push(`📎 [View on Explorer](${explorers[alert.chain]})`);
     }
   }
 
-  if (alert.walletLink) {
-    lines.push(`🔍 [Wallet on Etherscan](https://etherscan.io/address/${alert.wallet})`);
+  // Wallet link — Etherscan for EVM, THORChain explorer for THOR
+  if (alert.walletLink && alert.wallet) {
+    if (alert.chain === 'THOR') {
+      lines.push(`🔍 [Wallet on THORChain](https://thorchain.net/address/${alert.wallet})`);
+    } else {
+      lines.push(`🔍 [Wallet on Etherscan](https://etherscan.io/address/${alert.wallet})`);
+    }
   }
 
   lines.push(`⏱ ${new Date().toUTCString()}`);

@@ -93,6 +93,9 @@ async function processSwap(swap) {
         chain: 'THOR',
         title: `🚨 CRITICAL — THORChain Burst ${label}`,
         alertId: `thor:burst:${trackAddr}:${burstCount}`,
+        txHash: txId,
+        wallet: trackAddr,
+        walletLink: true,
         body: [
           `Direction: ${emoji} ${inAsset} → ${outAsset}`,
           `Wallet: \`${shortAddr(trackAddr)}\``,
@@ -112,6 +115,9 @@ async function processSwap(swap) {
       chain: 'THOR',
       title: `🟠 HIGH — THORChain Large Swap`,
       alertId: `thor:single:${txId}`,
+      txHash: txId,
+      wallet: fromAddr || toAddr,
+      walletLink: true,
       body: [
         `Direction: ${emoji} ${label}`,
         `Swap: *${inAmount.toFixed(2)} ${inAsset} → ${outAmount.toFixed(4)} ${outAsset}*`,
