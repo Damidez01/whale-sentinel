@@ -6,13 +6,17 @@ const { toUSD, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 
 // Thresholds
-const STRUCT_COUNT   = Number(process.env.STRUCTURING_COUNT         || 5);
-const STRUCT_WIN_MIN = Number(process.env.STRUCTURING_WINDOW_MIN    || 10);
-const STRUCT_USD     = Number(process.env.STRUCTURING_THRESHOLD_USD || 900_000);
-const DORMANT_MONTHS = Number(process.env.DORMANT_MONTHS            || 6);
-const DORMANT_USD    = Number(process.env.DORMANT_MIN_USD           || 500_000);
+const STRUCT_COUNT      = Number(process.env.STRUCTURING_COUNT         || 5);
+const STRUCT_WIN_MIN    = Number(process.env.STRUCTURING_WINDOW_MIN    || 10);
+const STRUCT_USD        = Number(process.env.STRUCTURING_THRESHOLD_USD || 900_000);
+const DORMANT_MONTHS    = Number(process.env.DORMANT_MONTHS            || 6);
+const DORMANT_USD       = Number(process.env.DORMANT_MIN_USD           || 500_000);
+const ACCUM_MIN_USD     = Number(process.env.ACCUM_MIN_USD             || 100_000);
+const ACCUM_COUNT       = Number(process.env.ACCUM_COUNT               || 3);
+const ACCUM_WIN_MIN     = Number(process.env.ACCUM_WIN_MIN             || 15);
+const CHAINFLIP_MIN_USD = Number(process.env.CHAINFLIP_MIN_USD         || 500_000);
 
-// Known L2 bridge contracts (flagged wallet crossing to L2 is suspicious)
+// Known L2 bridge contracts
 const BRIDGES = {
   '0x99c9fc46f92e8a1c0dec1b1747d010903e884be1': 'Optimism Bridge',
   '0x4dbd4fc535ac27206064b68ffcf827b0a60bab3f': 'Arbitrum Bridge',
@@ -20,11 +24,14 @@ const BRIDGES = {
   '0x2796317b0ff8538f1efdb9b9a3dd08fdb05e4eb1': 'zkSync Bridge',
 };
 
-// Tornado Cash pool addresses (to detect direct sends)
+// Tornado Cash pool addresses
 const TC_POOLS = new Set([
-  '0xa160cdab225685da1d56aa342ad8841c3b53f291', // 100 ETH
-  '0x910cbd523d972eb0a6f4cae4618ad62622b39dbf', // 10 ETH
+  '0xa160cdab225685da1d56aa342ad8841c3b53f291', // 100 ETH pool
+  '0x910cbd523d972eb0a6f4cae4618ad62622b39dbf', // 10 ETH pool
 ]);
+
+// Chainflip vault (ETH mainnet)
+const CHAINFLIP_VAULT = '0xf5e10380213880111522dd0efd3dbb45b9f62bcc';
 
 const CHAIN_CONFIG = [
   { name: 'ETH',  wssKey: 'ALCHEMY_ETH_WSS'  },
@@ -34,12 +41,10 @@ const CHAIN_CONFIG = [
 
 // ── Rule handlers ────────────────────────────────────────────
 
+// Rule 1: Direct TC deposit
 async function checkDirectTCDeposit(tx, usdValue, chain) {
   const to = tx.to?.toLowerCase();
   if (!TC_POOLS.has(to)) return;
-
-  // TC monitor handles the Deposit event — this catches the ETH send leading to it
-  // Only alert if it's a direct native ETH send (value > 0)
   if (!tx.value || tx.value === '0x0') return;
 
   sendAlert({
@@ -59,15 +64,134 @@ async function checkDirectTCDeposit(tx, usdValue, chain) {
   flag(tx.from, 'TC_DEPOSIT', tx.hash);
 }
 
+// Rule 2: Chainflip vault — large ETH in or out
+async function checkChainflip(tx, usdValue, chain) {
+  if (chain !== 'ETH') return; // Chainflip vault is ETH mainnet only
+  if (usdValue < CHAINFLIP_MIN_USD) return;
+
+  const to   = tx.to?.toLowerCase();
+  const from = tx.from?.toLowerCase();
+
+  const isDeposit  = to === CHAINFLIP_VAULT;
+  const isWithdraw = from === CHAINFLIP_VAULT;
+
+  if (!isDeposit && !isWithdraw) return;
+
+  const direction = isDeposit ? '📥 Into Chainflip' : '📤 Out of Chainflip';
+  const wallet    = isDeposit ? tx.from : tx.to;
+
+  // Burst detection — same wallet multiple times
+  const burstKey   = `cf:burst:${isDeposit ? tx.from : tx.to}`;
+  const burstCount = windowAdd(burstKey, usdValue, 15 * 60);
+
+  if (burstCount >= 3) {
+    const all      = windowGet(burstKey, 15 * 60);
+    const totalUSD = all.reduce((s, v) => s + Number(v), 0);
+
+    sendAlert({
+      chain,
+      title: `🚨 CRITICAL — Chainflip Burst Activity`,
+      alertId: `evm:cf:burst:${wallet}:${burstCount}`,
+      txHash: tx.hash,
+      wallet,
+      walletLink: true,
+      body: [
+        `Direction: ${direction}`,
+        `Wallet: \`${shortAddr(wallet)}\``,
+        ``,
+        `*${burstCount} transactions in 15 min*`,
+        `Total: *${fmtUSD(totalUSD)}*`,
+        `Latest: ${fmtUSD(usdValue)}`,
+        ``,
+        `Chainflip Vault: \`${shortAddr(CHAINFLIP_VAULT)}\``,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  // Single large tx
+  sendAlert({
+    chain,
+    title: `🟠 HIGH — Large Chainflip Vault ${isDeposit ? 'Deposit' : 'Withdrawal'}`,
+    alertId: `evm:cf:single:${tx.hash}`,
+    txHash: tx.hash,
+    wallet,
+    walletLink: true,
+    body: [
+      `Direction: ${direction}`,
+      `Wallet: \`${shortAddr(wallet)}\``,
+      `Amount: *${fmtUSD(usdValue)}*`,
+      ``,
+      `🔗 [Chainflip Explorer](https://explorer.chainflip.io)`,
+    ].join('\n'),
+  });
+}
+
+// Rule 3: Rapid accumulation — same wallet receives 3+ large txns in 15 min
+async function checkRapidAccumulation(tx, usdValue, chain) {
+  if (usdValue < ACCUM_MIN_USD) return;
+  if (!tx.to) return;
+
+  const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
+  const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
+
+  if (count === ACCUM_COUNT) {
+    const all      = windowGet(key, ACCUM_WIN_MIN * 60);
+    const totalUSD = all.reduce((s, v) => s + Number(v), 0);
+
+    sendAlert({
+      chain,
+      title: `🚨 CRITICAL — Rapid Fund Accumulation`,
+      alertId: `evm:accum:${tx.to}:${Date.now()}`,
+      txHash: tx.hash,
+      wallet: tx.to,
+      walletLink: true,
+      body: [
+        `Receiving wallet: \`${shortAddr(tx.to)}\``,
+        ``,
+        `*${count} incoming txns in ${ACCUM_WIN_MIN} min*`,
+        `Total received: *${fmtUSD(totalUSD)}*`,
+        `Each: ≥ ${fmtUSD(ACCUM_MIN_USD)}`,
+        ``,
+        `⚠️ Matches theft relay, phishing, or CEX hack pattern`,
+      ].join('\n'),
+    });
+  }
+
+  // Keep escalating every 2 after threshold
+  if (count > ACCUM_COUNT && (count - ACCUM_COUNT) % 2 === 0) {
+    const all      = windowGet(key, ACCUM_WIN_MIN * 60);
+    const totalUSD = all.reduce((s, v) => s + Number(v), 0);
+
+    sendAlert({
+      chain,
+      title: `🚨 CRITICAL — Accumulation Escalating`,
+      alertId: `evm:accum:escalate:${tx.to}:${count}`,
+      txHash: tx.hash,
+      wallet: tx.to,
+      walletLink: true,
+      body: [
+        `Receiving wallet: \`${shortAddr(tx.to)}\``,
+        ``,
+        `Now *${count} txns* in ${ACCUM_WIN_MIN} min`,
+        `Total received: *${fmtUSD(totalUSD)}*`,
+        ``,
+        `🔴 Still actively receiving funds`,
+      ].join('\n'),
+    });
+  }
+}
+
+// Rule 4: Structuring
 async function checkStructuring(tx, usdValue, chain) {
-  if (usdValue < 500_000 || usdValue > STRUCT_USD) return; // only near-threshold amounts
+  if (usdValue < 500_000 || usdValue > STRUCT_USD) return;
 
   const key   = `struct:${chain}:${tx.from?.toLowerCase()}`;
   const count = windowAdd(key, usdValue, STRUCT_WIN_MIN * 60);
 
   if (count === STRUCT_COUNT) {
-    const allValues = windowGet(key, STRUCT_WIN_MIN * 60);
-    const total     = allValues.reduce((s, v) => s + Number(v), 0);
+    const all      = windowGet(key, STRUCT_WIN_MIN * 60);
+    const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
     sendAlert({
       chain,
@@ -81,7 +205,7 @@ async function checkStructuring(tx, usdValue, chain) {
         ``,
         `*${count} transactions just under $1M*`,
         `in ${STRUCT_WIN_MIN} minutes`,
-        `Total moved: ${fmtUSD(total)}`,
+        `Total moved: ${fmtUSD(totalUSD)}`,
         `Each txn: ~${fmtUSD(usdValue)}`,
         ``,
         `⚠️ Classic structuring to avoid detection`,
@@ -90,52 +214,49 @@ async function checkStructuring(tx, usdValue, chain) {
   }
 }
 
+// Rule 5: Flagged wallet bridge exit
 async function checkFlaggedWallet(tx, usdValue, chain) {
   const fromFlag = isFlagged(tx.from);
   if (!fromFlag) return;
 
   const to     = tx.to?.toLowerCase();
   const bridge = BRIDGES[to];
+  if (!bridge) return;
 
-  if (bridge) {
-    // Flagged wallet trying to bridge to L2
-    sendAlert({
-      chain,
-      title: `🚨 CRITICAL — Flagged Wallet Bridge Exit`,
-      alertId: `evm:bridge:${tx.hash}`,
-      txHash: tx.hash,
-      wallet: tx.from,
-      walletLink: true,
-      body: [
-        `Wallet: \`${shortAddr(tx.from)}\``,
-        `Flag reason: ${fromFlag.reason}`,
-        ``,
-        `Bridging to: *${bridge}*`,
-        `Amount: ${fmtUSD(usdValue)}`,
-        ``,
-        `🔴 Previously flagged wallet attempting L2 exit`,
-      ].join('\n'),
-    });
+  sendAlert({
+    chain,
+    title: `🚨 CRITICAL — Flagged Wallet Bridge Exit`,
+    alertId: `evm:bridge:${tx.hash}`,
+    txHash: tx.hash,
+    wallet: tx.from,
+    walletLink: true,
+    body: [
+      `Wallet: \`${shortAddr(tx.from)}\``,
+      `Flag reason: ${fromFlag.reason}`,
+      ``,
+      `Bridging to: *${bridge}*`,
+      `Amount: ${fmtUSD(usdValue)}`,
+      ``,
+      `🔴 Previously flagged wallet attempting L2 exit`,
+    ].join('\n'),
+  });
 
-    // Flag the destination hop
-    if (tx.to) flagHop(tx.to, tx.from);
-  }
+  if (tx.to) flagHop(tx.to, tx.from);
 }
 
+// Rule 6: Dormant wallet
 async function checkDormantWallet(tx, usdValue, chain) {
   if (usdValue < DORMANT_USD) return;
 
-  const key   = `seen:${tx.from?.toLowerCase()}`;
-  const seen  = getKey(key);
+  const key  = `seen:${tx.from?.toLowerCase()}`;
+  const seen = getKey(key);
 
   if (!seen) {
-    // First time we've seen this wallet — mark it
-    setKey(key, Date.now().toString(), 86400 * 30); // remember 30 days
-    return; // can't determine dormancy on first sight
+    setKey(key, Date.now().toString(), 86400 * 30);
+    return;
   }
 
-  const lastSeen = Number(seen);
-  const monthsAgo = (Date.now() - lastSeen) / (1000 * 3600 * 24 * 30);
+  const monthsAgo = (Date.now() - Number(seen)) / (1000 * 3600 * 24 * 30);
 
   if (monthsAgo >= DORMANT_MONTHS) {
     sendAlert({
@@ -156,7 +277,6 @@ async function checkDormantWallet(tx, usdValue, chain) {
     });
   }
 
-  // Update last seen
   setKey(key, Date.now().toString(), 86400 * 30);
 }
 
@@ -167,10 +287,12 @@ async function handleTx(tx, chain) {
     if (!tx.value || tx.value === '0x0') return;
 
     const usdValue = await toUSD(BigInt(tx.value), 'ETH', 18);
-    if (!usdValue || usdValue < 50_000) return; // ignore dust
+    if (!usdValue || usdValue < 10_000) return; // ignore dust
 
     await Promise.all([
       checkDirectTCDeposit(tx, usdValue, chain),
+      checkChainflip(tx, usdValue, chain),
+      checkRapidAccumulation(tx, usdValue, chain),
       checkStructuring(tx, usdValue, chain),
       checkFlaggedWallet(tx, usdValue, chain),
       checkDormantWallet(tx, usdValue, chain),
