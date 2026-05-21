@@ -26,6 +26,7 @@ const CEX_RECEIVERS = new Set([
   '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // Coinbase
   '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // OKX
   '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // Kraken
+  '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', // Tornado Router
 ]);
 
 // Known L2 bridge contracts
@@ -134,7 +135,7 @@ async function checkChainflip(tx, usdValue, chain) {
       `Wallet: \`${shortAddr(wallet)}\``,
       `Amount: *${fmtUSD(usdValue)}*`,
       ``,
-      `🔗 [Chainflip Explorer](https://explorer.chainflip.io)`,
+      `🔗 [Chainflip Explorer](https://scan.chainflip.io)`,
     ].join('\n'),
   });
 }

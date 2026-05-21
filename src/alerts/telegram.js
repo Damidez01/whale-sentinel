@@ -32,6 +32,8 @@ function buildMessage(alert) {
       ETH:  `https://etherscan.io/tx/${alert.txHash}`,
       BASE: `https://basescan.org/tx/${alert.txHash}`,
       ARB:  `https://arbiscan.io/tx/${alert.txHash}`,
+      THOR: `https://thorchain.net/tx/${alert.txHash}`,
+
     };
     if (explorers[alert.chain]) {
       lines.push(`📎 [View on Explorer](${explorers[alert.chain]})`);
