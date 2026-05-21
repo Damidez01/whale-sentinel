@@ -16,6 +16,26 @@ const ACCUM_COUNT       = Number(process.env.ACCUM_COUNT               || 3);
 const ACCUM_WIN_MIN     = Number(process.env.ACCUM_WIN_MIN             || 15);
 const CHAINFLIP_MIN_USD = Number(process.env.CHAINFLIP_MIN_USD         || 500_000);
 
+// CEX hot wallets — suppress rapid accumulation alerts for these receivers
+const CEX_RECEIVERS = new Set([
+  '0x28c6c06298d514db089934071355e5743bf21d60', // Binance Hot Wallet
+  '0x21a31ee1afc51d94c2efccaa2092ad1028285549', // Binance Cold Wallet
+  '0xdfd5293d8e347dfe59e90efd55b2956a1343963d', // Binance
+  '0xf977814e90da44bfa03b6295a0616a897441acec', // Binance
+  '0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43', // Coinbase
+  '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // Coinbase
+  '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // OKX
+  '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // Kraken
+  '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', // Tornado Router
+  '0xa1abfA21f80ecf401bd41365adBb6fEF6fEfDF09', // Bybit
+  '0xe401A6A38024d8f5aB88f1B08cad476cCaCA45E8', // Bybit
+  '0xEDc7001e99a37c3D23b5f7974F837387e09f9C93', // Coinbase Deposit
+  '0xf584F8728B874a6a5c7A8d4d387C9aae9172D621', // Jump Trading
+  '0x62425cD6BDcB6bFE51558EA465B063486B70dc9f', // ByBIt
+  '0xb5d85CBf7cB3EE0D56b3bB207D5Fc4B82f43F511', // Coinbase
+  '0x28C6c06298d514Db089934071355E5743bf21d60'  // Binance14
+]);
+
 // Known L2 bridge contracts
 const BRIDGES = {
   '0x99c9fc46f92e8a1c0dec1b1747d010903e884be1': 'Optimism Bridge',
@@ -122,7 +142,7 @@ async function checkChainflip(tx, usdValue, chain) {
       `Wallet: \`${shortAddr(wallet)}\``,
       `Amount: *${fmtUSD(usdValue)}*`,
       ``,
-      `🔗 [Chainflip Explorer](https://explorer.chainflip.io)`,
+      `🔗 [Chainflip Explorer](https://scan.chainflip.io)`,
     ].join('\n'),
   });
 }
@@ -131,6 +151,7 @@ async function checkChainflip(tx, usdValue, chain) {
 async function checkRapidAccumulation(tx, usdValue, chain) {
   if (usdValue < ACCUM_MIN_USD) return;
   if (!tx.to) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
   const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
@@ -305,76 +326,31 @@ async function handleTx(tx, chain) {
 
 // ── WebSocket connector ──────────────────────────────────────
 
-// Detect if URL is Alchemy (supports full pending tx) or standard RPC (hash only)
-function isAlchemy(url) {
-  return url.includes('alchemy.com');
-}
-
-// For standard RPCs (dRPC etc) — fetch full tx by hash
-async function fetchTx(hash, wssUrl) {
-  try {
-    // Convert WSS to HTTPS for eth_getTransactionByHash
-    const httpUrl = wssUrl.replace('wss://', 'https://').replace('ws://', 'http://');
-    const axios = require('axios');
-    const { data } = await axios.post(httpUrl, {
-      jsonrpc: '2.0', id: 1,
-      method: 'eth_getTransactionByHash',
-      params: [hash],
-    }, { timeout: 5000 });
-    return data?.result || null;
-  } catch {
-    return null;
-  }
-}
-
 function connectChain(wssUrl, chain) {
   let ws;
   let reconnectDelay = 2000;
-  const useAlchemy   = isAlchemy(wssUrl);
 
   function connect() {
-    logger.info(`[EVM:${chain}] Connecting... (${useAlchemy ? 'Alchemy' : 'dRPC'})`);
+    logger.info(`[EVM:${chain}] Connecting...`);
     ws = new WebSocket(wssUrl);
 
     ws.on('open', () => {
       reconnectDelay = 2000;
       logger.info(`[EVM:${chain}] Connected ✓`);
 
-      if (useAlchemy) {
-        // Alchemy: get full tx objects directly
-        ws.send(JSON.stringify({
-          jsonrpc: '2.0', id: 1,
-          method: 'eth_subscribe',
-          params: ['alchemy_pendingTransactions', { toBlock: 'latest' }],
-        }));
-      } else {
-        // Standard RPC: get tx hashes only, fetch full tx on demand
-        ws.send(JSON.stringify({
-          jsonrpc: '2.0', id: 1,
-          method: 'eth_subscribe',
-          params: ['newPendingTransactions'],
-        }));
-      }
+      ws.send(JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        method: 'eth_subscribe',
+        params: ['alchemy_pendingTransactions', { toBlock: 'latest' }],
+      }));
     });
 
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw);
         if (!msg.params?.result) return;
-        const result = msg.params.result;
-
-        if (useAlchemy) {
-          // Full tx object — process directly
-          if (result.from && result.hash) handleTx(result, chain);
-        } else {
-          // Just a hash — only fetch full tx if it looks worth checking
-          // We fetch it and check value — skip if fetch fails or value is dust
-          if (typeof result === 'string' && result.startsWith('0x')) {
-            fetchTx(result, wssUrl).then(tx => {
-              if (tx && tx.from && tx.hash) handleTx(tx, chain);
-            });
-          }
-        }
+        const tx = msg.params.result;
+        if (tx.from && tx.hash) handleTx(tx, chain);
       } catch {}
     });
 

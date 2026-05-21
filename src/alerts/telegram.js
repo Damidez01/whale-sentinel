@@ -96,7 +96,7 @@ function sendAlert(alert) {
 async function sendStartup(modules) {
   try {
     const msg = [
-      `🛡 *WhaleSentinel v2 Online*`,
+      `🛡 *ChainHound v2 Online*`,
       ``,
       `Active modules:`,
       modules.map(m => `  • ${m}`).join('\n'),

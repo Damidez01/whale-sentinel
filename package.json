@@ -1,5 +1,5 @@
 {
-  "name": "whale-sentinel",
+  "name": "ChainHound",
   "version": "2.0.0",
   "description": "Crypto incident detection — Tornado Cash, THORChain, EVM",
   "main": "src/index.js",

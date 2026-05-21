@@ -18,7 +18,7 @@ if (missing.length) {
 
 // ── Startup ──────────────────────────────────────────────────
 async function main() {
-  logger.info('🛡 WhaleSentinel v2 starting...');
+  logger.info('🛡 ChainHound v2 starting...');
 
   const modules = [];
 
@@ -42,7 +42,7 @@ async function main() {
   // Send startup message to Telegram
   await sendStartup(modules);
 
-  logger.info(`✅ WhaleSentinel v2 running | ${modules.length} modules active`);
+  logger.info(`✅ ChainHound v2 running | ${modules.length} modules active`);
 }
 
 // ── Error handling ───────────────────────────────────────────
