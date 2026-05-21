@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const { startTornadoMonitor }  = require('./monitors/tornado');
-//const { startTHORChainMonitor } = require('./monitors/thorchain');
+const { startTHORChainMonitor } = require('./monitors/thorchain');
 const { startEVMMonitor }       = require('./monitors/evm');
 const { sendStartup }           = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
