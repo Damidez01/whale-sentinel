@@ -382,13 +382,12 @@ function connectChain(wssUrl, chain) {
         if (useAlchemy) {
           if (result.from && result.hash) handleTx(result, chain);
         } else {
-  if (typeof result === 'string' && result.startsWith('0x')) {
-    logger.info(`[EVM:${chain}] hash received, fetching...`);
-    fetchTx(result, wssUrl).then(tx => {
-      if (tx && tx.from && tx.hash) handleTx(tx, chain);
-    });
-  }
-  }
+          if (typeof result === 'string' && result.startsWith('0x')) {
+            fetchTx(result, wssUrl).then(tx => {
+              if (tx && tx.from && tx.hash) handleTx(tx, chain);
+            });
+          }
+        }
       } catch {}
     });
 
