@@ -326,31 +326,68 @@ async function handleTx(tx, chain) {
 
 // ── WebSocket connector ──────────────────────────────────────
 
+function isAlchemy(url) {
+  return url.includes('alchemy.com');
+}
+
+async function fetchTx(hash, wssUrl) {
+  try {
+    const httpUrl = wssUrl.replace('wss://', 'https://').replace('ws://', 'http://');
+    const axios = require('axios');
+    const { data } = await axios.post(httpUrl, {
+      jsonrpc: '2.0', id: 1,
+      method: 'eth_getTransactionByHash',
+      params: [hash],
+    }, { timeout: 5000 });
+    return data?.result || null;
+  } catch {
+    return null;
+  }
+}
+
 function connectChain(wssUrl, chain) {
   let ws;
   let reconnectDelay = 2000;
+  const useAlchemy = isAlchemy(wssUrl);
 
   function connect() {
-    logger.info(`[EVM:${chain}] Connecting...`);
+    logger.info(`[EVM:${chain}] Connecting... (${useAlchemy ? 'Alchemy' : 'dRPC'})`);
     ws = new WebSocket(wssUrl);
 
     ws.on('open', () => {
       reconnectDelay = 2000;
       logger.info(`[EVM:${chain}] Connected ✓`);
 
-      ws.send(JSON.stringify({
-        jsonrpc: '2.0', id: 1,
-        method: 'eth_subscribe',
-        params: ['alchemy_pendingTransactions', { toBlock: 'latest' }],
-      }));
+      if (useAlchemy) {
+        ws.send(JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'eth_subscribe',
+          params: ['alchemy_pendingTransactions', { toBlock: 'latest' }],
+        }));
+      } else {
+        ws.send(JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'eth_subscribe',
+          params: ['newPendingTransactions'],
+        }));
+      }
     });
 
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw);
         if (!msg.params?.result) return;
-        const tx = msg.params.result;
-        if (tx.from && tx.hash) handleTx(tx, chain);
+        const result = msg.params.result;
+
+        if (useAlchemy) {
+          if (result.from && result.hash) handleTx(result, chain);
+        } else {
+          if (typeof result === 'string' && result.startsWith('0x')) {
+            fetchTx(result, wssUrl).then(tx => {
+              if (tx && tx.from && tx.hash) handleTx(tx, chain);
+            });
+          }
+        }
       } catch {}
     });
 
