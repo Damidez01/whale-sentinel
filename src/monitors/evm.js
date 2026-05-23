@@ -164,6 +164,10 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   if (!tx.to) return;
   if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
+  const dedupKey = `accum:dedup:${tx.hash}`;
+  if (getKey(dedupKey)) return;
+  setKey(dedupKey, '1', 900);
+
   const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
 
@@ -217,6 +221,10 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
 // Rule 4: Structuring
 async function checkStructuring(tx, usdValue, chain) {
   if (usdValue < 500_000 || usdValue > STRUCT_USD) return;
+
+  const dedupKey = `struct:dedup:${tx.hash}`;
+  if (getKey(dedupKey)) return;
+  setKey(dedupKey, '1', 600);
 
   const key   = `struct:${chain}:${tx.from?.toLowerCase()}`;
   const count = windowAdd(key, usdValue, STRUCT_WIN_MIN * 60);
@@ -279,6 +287,10 @@ async function checkFlaggedWallet(tx, usdValue, chain) {
 // Rule 6: Dormant wallet
 async function checkDormantWallet(tx, usdValue, chain) {
   if (usdValue < DORMANT_USD) return;
+
+  const dedupKey = `dormant:dedup:${tx.hash}`;
+  if (getKey(dedupKey)) return;
+setKey(dedupKey, '1', 600);
 
   const key  = `seen:${tx.from?.toLowerCase()}`;
   const seen = getKey(key);
