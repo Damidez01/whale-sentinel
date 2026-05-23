@@ -334,7 +334,7 @@ async function handleTx(tx, chain) {
 // ── WebSocket connector ──────────────────────────────────────
 
 function isAlchemy(url) {
-  return url.includes('alchemy.com');
+  return url?.includes('alchemy.com');
 }
 
 async function fetchTx(hash, wssUrl) {
@@ -352,20 +352,30 @@ async function fetchTx(hash, wssUrl) {
   }
 }
 
-function connectChain(wssUrl, chain) {
+function connectChain(primaryUrl, chain, fallbackUrl = null) {
   let ws;
-  let reconnectDelay = 2000;
-  const useAlchemy = isAlchemy(wssUrl);
+  let reconnectDelay  = 2000;
+  let failCount       = 0;
+  let usingFallback   = false;
+
+  function currentUrl() {
+    return usingFallback && fallbackUrl ? fallbackUrl : primaryUrl;
+  }
 
   function connect() {
-    logger.info(`[EVM:${chain}] Connecting... (${useAlchemy ? 'Alchemy' : 'dRPC'})`);
-    ws = new WebSocket(wssUrl);
+    const url       = currentUrl();
+    const label     = isAlchemy(url) ? 'Alchemy' : 'dRPC';
+    const fallLabel = usingFallback ? ' [FALLBACK]' : '';
+    logger.info(`[EVM:${chain}] Connecting... (${label}${fallLabel})`);
+
+    ws = new WebSocket(url);
 
     ws.on('open', () => {
       reconnectDelay = 2000;
-      logger.info(`[EVM:${chain}] Connected ✓`);
+      failCount      = 0;
+      logger.info(`[EVM:${chain}] Connected ✓ (${label}${fallLabel})`);
 
-      if (useAlchemy) {
+      if (isAlchemy(url)) {
         ws.send(JSON.stringify({
           jsonrpc: '2.0', id: 1,
           method: 'eth_subscribe',
@@ -386,11 +396,11 @@ function connectChain(wssUrl, chain) {
         if (!msg.params?.result) return;
         const result = msg.params.result;
 
-        if (useAlchemy) {
+        if (isAlchemy(currentUrl())) {
           if (result.from && result.hash) handleTx(result, chain);
         } else {
           if (typeof result === 'string' && result.startsWith('0x')) {
-            fetchTx(result, wssUrl).then(tx => {
+            fetchTx(result, currentUrl()).then(tx => {
               if (tx && tx.from && tx.hash) handleTx(tx, chain);
             });
           }
@@ -403,6 +413,17 @@ function connectChain(wssUrl, chain) {
     });
 
     ws.on('close', () => {
+      failCount++;
+      if (!usingFallback && fallbackUrl && failCount >= 3) {
+        usingFallback = true;
+        logger.warn(`[EVM:${chain}] dRPC failed ${failCount}x — switching to Alchemy fallback`);
+        failCount = 0;
+      } else if (usingFallback && failCount >= 3) {
+        usingFallback = false;
+        logger.warn(`[EVM:${chain}] Alchemy fallback failed — retrying dRPC`);
+        failCount = 0;
+      }
+
       logger.warn(`[EVM:${chain}] Disconnected. Reconnecting in ${reconnectDelay / 1000}s...`);
       setTimeout(() => {
         reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
@@ -424,7 +445,11 @@ function startEVMMonitor() {
       logger.warn(`[EVM:${name}] No WSS URL — skipping`);
       continue;
     }
-    connectChain(url, name);
+
+    const fallback = name === 'ETH' ? process.env.ALCHEMY_ETH_FALLBACK : null;
+    if (fallback) logger.info(`[EVM:${name}] Fallback configured: Alchemy`);
+
+    connectChain(url, name, fallback);
   }
 }
 

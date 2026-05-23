@@ -3,6 +3,7 @@ require('dotenv').config();
 const { startTornadoMonitor }  = require('./monitors/tornado');
 const { startTHORChainMonitor } = require('./monitors/thorchain');
 const { startEVMMonitor }       = require('./monitors/evm');
+const { startChainflipMonitor } = require('./monitors/chainflip');
 const { sendStartup }           = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
 const logger = require('./utils/logger');
@@ -18,7 +19,7 @@ if (missing.length) {
 
 // ── Startup ──────────────────────────────────────────────────
 async function main() {
-  logger.info('🛡 ChainHound v2 starting...');
+  logger.info('🐕 ChainHound v2 starting...');
 
   const modules = [];
 
@@ -37,6 +38,15 @@ async function main() {
   // EVM chains
   startEVMMonitor();
   modules.push('EVM — ETH, Base, Arbitrum');
+
+  // Chainflip vault monitor
+  if (process.env.ETHERSCAN_API_KEY) {
+    startChainflipMonitor();
+    modules.push('Chainflip Vault (ETH in/out)');
+  } else {
+    logger.warn('[Main] No ETHERSCAN_API_KEY — Chainflip monitor disabled');
+  }
+
   modules.push(`Intelligence — ${getFlaggedCount()} wallets pre-loaded from disk`);
 
   // Send startup message to Telegram
