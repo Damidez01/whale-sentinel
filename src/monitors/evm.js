@@ -21,26 +21,29 @@ const CEX_RECEIVERS = new Set([
   '0x28c6c06298d514db089934071355e5743bf21d60', // Binance Hot Wallet
   '0x21a31ee1afc51d94c2efccaa2092ad1028285549', // Binance Cold Wallet
   '0xdfd5293d8e347dfe59e90efd55b2956a1343963d', // Binance
-  '0xf977814e90da44bfa03b6295a0616a897441acec', // Binance
-  '0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43', // Coinbase
-  '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // Coinbase
-  '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // OKX
-  '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // Kraken
-  '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', // Tornado Router
-  '0xa1abfA21f80ecf401bd41365adBb6fEF6fEfDF09', // Bybit
-  '0xe401A6A38024d8f5aB88f1B08cad476cCaCA45E8', // Bybit
-  '0xEDc7001e99a37c3D23b5f7974F837387e09f9C93', // Coinbase Deposit
-  '0xf584F8728B874a6a5c7A8d4d387C9aae9172D621', // Jump Trading
-  '0x62425cD6BDcB6bFE51558EA465B063486B70dc9f', // ByBIt
-  '0xb5d85CBf7cB3EE0D56b3bB207D5Fc4B82f43F511', // Coinbase
-  '0x28C6c06298d514Db089934071355E5743bf21d60',  // Binance14
-  '0x389044F3ac7472060A0618116e3624A5f0f20F28', // Shakepay
-  '0xA9Ac43f5b5e38155A288d1A01D2cbc4478E14573', // OKX
-  '0xBBd0D4d067d5aF2065B1B6fD936d93237Ae1c56C', // ShakePay
-  '0xa1abfA21f80ecf401bd41365adBb6fEF6fEfDF09', // Bybit
-  '0x0003B5Aa5E30E97FcC596BB5D0F3A75255E08D4e', // OKX
-  '0x549d835356d92983AbB76E4cae639f7857963425', // b2C Group
-  '0x652a2aDe712e21B9F83672bDE4462c6F8723A30b', // OKX Deposit
+  '0xf977814e90da44bfa03b6295a0616a897441acec', // binance
+  '0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43', // coinbase
+  '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // coinbase
+  '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // okx
+  '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // kraken
+  '0xd90e2f925da726b50c4ed8d0fb90ad053324f31b', // tornado router
+  '0xa1abfa21f80ecf401bd41365adbb6fef6fefdf09', // bybit
+  '0xe401a6a38024d8f5ab88f1b08cad476ccaca45e8', // bybit
+  '0xedc7001e99a37c3d23b5f7974f837387e09f9c93', // coinbase deposit
+  '0xf584f8728b874a6a5c7a8d4d387c9aae9172d621', // jump trading
+  '0x62425cd6bdcb6bfe51558ea465b063486b70dc9f', // bybit
+  '0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511', // coinbase
+  '0x28c6c06298d514db089934071355e5743bf21d60',  // binance14
+  '0x389044f3ac7472060a0618116e3624a5f0f20f28', // shakepay
+  '0xa9ac43f5b5e38155a288d1a01d2cbc4478e14573', // okx
+  '0xbbd0d4d067d5af2065b1b6fd936d93237ae1c56c', // shakepay
+  '0x0003b5aa5e30e97fcc596bb5d0f3a75255e08d4e', // okx
+  '0x549d835356d92983abb76e4cae639f7857963425', // b2c group
+  '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // okx deposit
+  '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // relay
+  '0xe401a6a38024d8f5ab88f1b08cad476ccaca45e8', // bybit deposit
+  '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // kraken
+
 ]);
 
 // Known L2 bridge contracts
