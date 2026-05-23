@@ -61,11 +61,12 @@ const TC_POOLS = new Set([
 const CHAINFLIP_VAULT = '0xf5e10380213880111522dd0efd3dbb45b9f62bcc';
 
 const CHAIN_CONFIG = [
-  { name: 'ETH',  wssKey: 'ALCHEMY_ETH_WSS'  },
-  { name: 'BASE', wssKey: 'ALCHEMY_BASE_WSS' },
-  { name: 'ARB',  wssKey: 'ALCHEMY_ARB_WSS'  },
+  { name: 'ETH',     wssKey: 'ALCHEMY_ETH_WSS'  },
+  { name: 'BASE',    wssKey: 'ALCHEMY_BASE_WSS' },
+  { name: 'ARB',     wssKey: 'ALCHEMY_ARB_WSS'  },
+  { name: 'POLYGON', wssKey: 'ALCHEMY_POL_WSS'  },
+  { name: 'BNB',     wssKey: 'ALCHEMY_BNB_WSS'  },
 ];
-
 // ── Rule handlers ────────────────────────────────────────────
 
 // Rule 1: Direct TC deposit
