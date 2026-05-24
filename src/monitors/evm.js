@@ -21,29 +21,29 @@ const CEX_RECEIVERS = new Set([
   '0x28c6c06298d514db089934071355e5743bf21d60', // Binance Hot Wallet
   '0x21a31ee1afc51d94c2efccaa2092ad1028285549', // Binance Cold Wallet
   '0xdfd5293d8e347dfe59e90efd55b2956a1343963d', // Binance
-  '0xf977814e90da44bfa03b6295a0616a897441acec', // binance
-  '0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43', // coinbase
-  '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // coinbase
-  '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // okx
-  '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // kraken
-  '0xd90e2f925da726b50c4ed8d0fb90ad053324f31b', // tornado router
-  '0xa1abfa21f80ecf401bd41365adbb6fef6fefdf09', // bybit
-  '0xe401a6a38024d8f5ab88f1b08cad476ccaca45e8', // bybit
-  '0xedc7001e99a37c3d23b5f7974f837387e09f9c93', // coinbase deposit
-  '0xf584f8728b874a6a5c7a8d4d387c9aae9172d621', // jump trading
-  '0x62425cd6bdcb6bfe51558ea465b063486b70dc9f', // bybit
-  '0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511', // coinbase
-  '0x28c6c06298d514db089934071355e5743bf21d60',  // binance14
-  '0x389044f3ac7472060a0618116e3624a5f0f20f28', // shakepay
-  '0xa9ac43f5b5e38155a288d1a01d2cbc4478e14573', // okx
-  '0xbbd0d4d067d5af2065b1b6fd936d93237ae1c56c', // shakepay
-  '0x0003b5aa5e30e97fcc596bb5d0f3a75255e08d4e', // okx
-  '0x549d835356d92983abb76e4cae639f7857963425', // b2c group
-  '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // okx deposit
-  '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // relay
-  '0xe401a6a38024d8f5ab88f1b08cad476ccaca45e8', // bybit deposit
-  '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // kraken
-
+  '0xf977814e90da44bfa03b6295a0616a897441acec', // Binance
+  '0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43', // Coinbase
+  '0x71660c4005ba85c37ccec55d0c4493e66fe775d3', // Coinbase
+  '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b', // OKX
+  '0x0a869d79a7052c7f1b55a8ebabbea3420f0d1e13', // Kraken
+  '0xd90e2f925da726b50c4ed8d0fb90ad053324f31b', // Tornado Router
+  '0xa1abfa21f80ecf401bd41365adbb6fef6fefdf09', // Bybit
+  '0xe401a6a38024d8f5ab88f1b08cad476ccaca45e8', // Bybit
+  '0xedc7001e99a37c3d23b5f7974f837387e09f9c93', // Coinbase Deposit
+  '0xf584f8728b874a6a5c7a8d4d387c9aae9172d621', // Jump Trading
+  '0x62425cd6bdcb6bfe51558ea465b063486b70dc9f', // Bybit
+  '0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511', // Coinbase
+  '0x389044f3ac7472060a0618116e3624a5f0f20f28', // Shakepay
+  '0xa9ac43f5b5e38155a288d1a01d2cbc4478e14573', // OKX
+  '0xbbd0d4d067d5af2065b1b6fd936d93237ae1c56c', // ShakePay
+  '0x0003b5aa5e30e97fcc596bb5d0f3a75255e08d4e', // OKX
+  '0x549d835356d92983abb76e4cae639f7857963425', // b2C Group
+  '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // OKX Deposit
+  '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
+  '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
+  '0x2cff890f0378a11913b6129b2e97417a2c302680', // Near Intent
+  '0xae8cbb7e810f59fd0dd939b2b6623756d91b174a', // Near Intent Deposit
+  ''
 ]);
 
 // Known L2 bridge contracts
@@ -64,12 +64,11 @@ const TC_POOLS = new Set([
 const CHAINFLIP_VAULT = '0xf5e10380213880111522dd0efd3dbb45b9f62bcc';
 
 const CHAIN_CONFIG = [
-  { name: 'ETH',     wssKey: 'ALCHEMY_ETH_WSS'  },
-  { name: 'BASE',    wssKey: 'ALCHEMY_BASE_WSS' },
-  { name: 'ARB',     wssKey: 'ALCHEMY_ARB_WSS'  },
-  { name: 'POLYGON', wssKey: 'ALCHEMY_POL_WSS'  },
-  { name: 'BNB',     wssKey: 'ALCHEMY_BNB_WSS'  },
+  { name: 'ETH',  wssKey: 'ALCHEMY_ETH_WSS'  },
+  { name: 'BASE', wssKey: 'ALCHEMY_BASE_WSS' },
+  { name: 'ARB',  wssKey: 'ALCHEMY_ARB_WSS'  },
 ];
+
 // ── Rule handlers ────────────────────────────────────────────
 
 // Rule 1: Direct TC deposit
@@ -97,7 +96,7 @@ async function checkDirectTCDeposit(tx, usdValue, chain) {
 
 // Rule 2: Chainflip vault — large ETH in or out
 async function checkChainflip(tx, usdValue, chain) {
-  if (chain !== 'ETH') return; // Chainflip vault is ETH mainnet only
+  if (chain !== 'ETH') return;
   if (usdValue < CHAINFLIP_MIN_USD) return;
 
   const to   = tx.to?.toLowerCase();
@@ -111,7 +110,6 @@ async function checkChainflip(tx, usdValue, chain) {
   const direction = isDeposit ? '📥 Into Chainflip' : '📤 Out of Chainflip';
   const wallet    = isDeposit ? tx.from : tx.to;
 
-  // Burst detection — same wallet multiple times
   const burstKey   = `cf:burst:${isDeposit ? tx.from : tx.to}`;
   const burstCount = windowAdd(burstKey, usdValue, 15 * 60);
 
@@ -140,7 +138,6 @@ async function checkChainflip(tx, usdValue, chain) {
     return;
   }
 
-  // Single large tx
   sendAlert({
     chain,
     title: `🟠 HIGH — Large Chainflip Vault ${isDeposit ? 'Deposit' : 'Withdrawal'}`,
@@ -158,15 +155,11 @@ async function checkChainflip(tx, usdValue, chain) {
   });
 }
 
-// Rule 3: Rapid accumulation — same wallet receives 3+ large txns in 15 min
+// Rule 3: Rapid accumulation
 async function checkRapidAccumulation(tx, usdValue, chain) {
   if (usdValue < ACCUM_MIN_USD) return;
   if (!tx.to) return;
   if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
-
-  const dedupKey = `accum:dedup:${tx.hash}`;
-  if (getKey(dedupKey)) return;
-  setKey(dedupKey, '1', 900);
 
   const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
@@ -178,7 +171,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     sendAlert({
       chain,
       title: `🚨 CRITICAL — Rapid Fund Accumulation`,
-      alertId: `evm:accum:${tx.to}:${Date.now()}`,
+      alertId: `evm:accum:${chain}:${tx.to}`,
       txHash: tx.hash,
       wallet: tx.to,
       walletLink: true,
@@ -194,7 +187,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     });
   }
 
-  // Keep escalating every 2 after threshold
+  // Escalate every 2 after threshold
   if (count > ACCUM_COUNT && (count - ACCUM_COUNT) % 2 === 0) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
@@ -202,7 +195,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     sendAlert({
       chain,
       title: `🚨 CRITICAL — Accumulation Escalating`,
-      alertId: `evm:accum:escalate:${tx.to}:${count}`,
+      alertId: `evm:accum:escalate:${chain}:${tx.to}:${count}`,
       txHash: tx.hash,
       wallet: tx.to,
       walletLink: true,
@@ -222,10 +215,6 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
 async function checkStructuring(tx, usdValue, chain) {
   if (usdValue < 500_000 || usdValue > STRUCT_USD) return;
 
-  const dedupKey = `struct:dedup:${tx.hash}`;
-  if (getKey(dedupKey)) return;
-  setKey(dedupKey, '1', 600);
-
   const key   = `struct:${chain}:${tx.from?.toLowerCase()}`;
   const count = windowAdd(key, usdValue, STRUCT_WIN_MIN * 60);
 
@@ -236,7 +225,7 @@ async function checkStructuring(tx, usdValue, chain) {
     sendAlert({
       chain,
       title: `🟠 HIGH — Structuring Pattern Detected`,
-      alertId: `evm:struct:${tx.from}:${Date.now()}`,
+      alertId: `evm:struct:${chain}:${tx.from}`,
       txHash: tx.hash,
       wallet: tx.from,
       walletLink: true,
@@ -288,10 +277,6 @@ async function checkFlaggedWallet(tx, usdValue, chain) {
 async function checkDormantWallet(tx, usdValue, chain) {
   if (usdValue < DORMANT_USD) return;
 
-  const dedupKey = `dormant:dedup:${tx.hash}`;
-  if (getKey(dedupKey)) return;
-setKey(dedupKey, '1', 600);
-
   const key  = `seen:${tx.from?.toLowerCase()}`;
   const seen = getKey(key);
 
@@ -328,14 +313,15 @@ setKey(dedupKey, '1', 600);
 
 async function handleTx(tx, chain) {
   try {
+    // Global dedup — one tx processed once regardless of RPC duplicates
     const dedupKey = `tx:${tx.hash}`;
     if (getKey(dedupKey)) return;
-    setKey(dedupKey, '1', 300);
-    
+    setKey(dedupKey, '1', 3600); // 1 hour
+
     if (!tx.value || tx.value === '0x0') return;
 
     const usdValue = await toUSD(BigInt(tx.value), 'ETH', 18);
-    if (!usdValue || usdValue < 10_000) return; // ignore dust
+    if (!usdValue || usdValue < 10_000) return;
 
     await Promise.all([
       checkDirectTCDeposit(tx, usdValue, chain),
@@ -374,9 +360,10 @@ async function fetchTx(hash, wssUrl) {
 
 function connectChain(primaryUrl, chain, fallbackUrl = null) {
   let ws;
-  let reconnectDelay  = 2000;
-  let failCount       = 0;
-  let usingFallback   = false;
+  let reconnectDelay = 2000;
+  let failCount      = 0;
+  let usingFallback  = false;
+  let lastMessageAt  = Date.now();
 
   function currentUrl() {
     return usingFallback && fallbackUrl ? fallbackUrl : primaryUrl;
@@ -393,6 +380,7 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
     ws.on('open', () => {
       reconnectDelay = 2000;
       failCount      = 0;
+      lastMessageAt  = Date.now();
       logger.info(`[EVM:${chain}] Connected ✓ (${label}${fallLabel})`);
 
       if (isAlchemy(url)) {
@@ -411,6 +399,7 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
     });
 
     ws.on('message', (raw) => {
+      lastMessageAt = Date.now(); // update on every message
       try {
         const msg = JSON.parse(raw);
         if (!msg.params?.result) return;
@@ -436,11 +425,11 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
       failCount++;
       if (!usingFallback && fallbackUrl && failCount >= 3) {
         usingFallback = true;
-        logger.warn(`[EVM:${chain}] dRPC failed ${failCount}x — switching to Alchemy fallback`);
+        logger.warn(`[EVM:${chain}] Primary failed ${failCount}x — switching to fallback`);
         failCount = 0;
       } else if (usingFallback && failCount >= 3) {
         usingFallback = false;
-        logger.warn(`[EVM:${chain}] Alchemy fallback failed — retrying dRPC`);
+        logger.warn(`[EVM:${chain}] Fallback failed — retrying primary`);
         failCount = 0;
       }
 
@@ -453,7 +442,21 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
   }
 
   connect();
-  setInterval(() => { if (ws?.readyState === WebSocket.OPEN) ws.ping(); }, 30_000);
+
+  // Heartbeat ping every 30s
+  setInterval(() => {
+    if (ws?.readyState === WebSocket.OPEN) ws.ping();
+  }, 30_000);
+
+  // Stale socket detection — if no message in 3 min, force reconnect
+  setInterval(() => {
+    if (ws?.readyState === WebSocket.OPEN) {
+      if (Date.now() - lastMessageAt > 3 * 60 * 1000) {
+        logger.warn(`[EVM:${chain}] Stale socket detected — forcing reconnect`);
+        ws.terminate();
+      }
+    }
+  }, 2 * 60 * 1000);
 }
 
 // ── Entry point ──────────────────────────────────────────────
