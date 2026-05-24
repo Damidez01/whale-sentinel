@@ -41,9 +41,6 @@ const CEX_RECEIVERS = new Set([
   '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // OKX Deposit
   '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
   '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
-  '0x2cff890f0378a11913b6129b2e97417a2c302680', // Near Intent
-  '0xae8cbb7e810f59fd0dd939b2b6623756d91b174a', // Near Intent Deposit
-  ''
 ]);
 
 // Known L2 bridge contracts
@@ -343,6 +340,22 @@ function isAlchemy(url) {
   return url?.includes('alchemy.com');
 }
 
+// Fetch full block with transactions
+async function fetchBlock(blockHash, httpUrl) {
+  try {
+    const axios = require('axios');
+    const { data } = await axios.post(httpUrl, {
+      jsonrpc: '2.0', id: 1,
+      method: 'eth_getBlockByHash',
+      params: [blockHash, true], // true = include full tx objects
+    }, { timeout: 10_000 });
+    return data?.result?.transactions || [];
+  } catch {
+    return [];
+  }
+}
+
+// Fetch full tx by hash (for dRPC)
 async function fetchTx(hash, wssUrl) {
   try {
     const httpUrl = wssUrl.replace('wss://', 'https://').replace('ws://', 'http://');
@@ -369,11 +382,16 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
     return usingFallback && fallbackUrl ? fallbackUrl : primaryUrl;
   }
 
+  function getHttpUrl(wssUrl) {
+    return wssUrl.replace('wss://', 'https://').replace('ws://', 'http://');
+  }
+
   function connect() {
     const url       = currentUrl();
     const label     = isAlchemy(url) ? 'Alchemy' : 'dRPC';
     const fallLabel = usingFallback ? ' [FALLBACK]' : '';
-    logger.info(`[EVM:${chain}] Connecting... (${label}${fallLabel})`);
+    const mode      = isAlchemy(url) ? 'confirmed blocks' : 'pending txs';
+    logger.info(`[EVM:${chain}] Connecting... (${label} — ${mode}${fallLabel})`);
 
     ws = new WebSocket(url);
 
@@ -384,12 +402,16 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
       logger.info(`[EVM:${chain}] Connected ✓ (${label}${fallLabel})`);
 
       if (isAlchemy(url)) {
+        // Confirmed blocks mode — subscribe to new block headers
+        // Each block every ~12 seconds, then fetch all txs in block
+        // Uses ~100K CUs/day vs 2.6M for pending txs
         ws.send(JSON.stringify({
           jsonrpc: '2.0', id: 1,
           method: 'eth_subscribe',
-          params: ['alchemy_pendingTransactions', { toBlock: 'latest' }],
+          params: ['newHeads'],
         }));
       } else {
+        // dRPC — pending tx hashes
         ws.send(JSON.stringify({
           jsonrpc: '2.0', id: 1,
           method: 'eth_subscribe',
@@ -399,15 +421,24 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
     });
 
     ws.on('message', (raw) => {
-      lastMessageAt = Date.now(); // update on every message
+      lastMessageAt = Date.now();
       try {
         const msg = JSON.parse(raw);
         if (!msg.params?.result) return;
         const result = msg.params.result;
 
         if (isAlchemy(currentUrl())) {
-          if (result.from && result.hash) handleTx(result, chain);
+          // result is a block header — fetch all txs in this block
+          if (result.hash) {
+            const httpUrl = getHttpUrl(currentUrl());
+            fetchBlock(result.hash, httpUrl).then(txs => {
+              for (const tx of txs) {
+                if (tx && tx.from && tx.hash) handleTx(tx, chain);
+              }
+            });
+          }
         } else {
+          // dRPC — result is a tx hash
           if (typeof result === 'string' && result.startsWith('0x')) {
             fetchTx(result, currentUrl()).then(tx => {
               if (tx && tx.from && tx.hash) handleTx(tx, chain);
@@ -448,7 +479,7 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
     if (ws?.readyState === WebSocket.OPEN) ws.ping();
   }, 30_000);
 
-  // Stale socket detection — if no message in 3 min, force reconnect
+  // Stale socket detection — newHeads fires every ~12s so 3 min = clearly stale
   setInterval(() => {
     if (ws?.readyState === WebSocket.OPEN) {
       if (Date.now() - lastMessageAt > 3 * 60 * 1000) {
