@@ -328,6 +328,10 @@ setKey(dedupKey, '1', 600);
 
 async function handleTx(tx, chain) {
   try {
+    const dedupKey = `tx:${tx.hash}`;
+    if (getKey(dedupKey)) return;
+    setKey(dedupKey, '1', 300);
+    
     if (!tx.value || tx.value === '0x0') return;
 
     const usdValue = await toUSD(BigInt(tx.value), 'ETH', 18);
