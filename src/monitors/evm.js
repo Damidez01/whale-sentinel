@@ -41,6 +41,18 @@ const CEX_RECEIVERS = new Set([
   '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // OKX Deposit
   '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
   '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
+  '0x2364ab81b114b6bfbf39514a7d0396ce0e0ddff1', // BitKan Deposit
+  '0xbea9f7fd27f4ee20066f18def0bc586ec221055a', // Hyperunit
+  '0x2a45907f94df93388801ae72fe810eac75926a1d', // Bitpoint
+  '0x835033bd90b943fa0d0f8e5382d9dc568d3fbd96', // Bitflyer
+  '0x5c7bcd6e7de5423a257d81b442095a1a6ced35c5', // Accross Protocol
+  '0xeae7380dd4cef6fbd1144f49e4d1e6964258a4f4', // Wintermute
+  '0x2c0ec52e11eee4b8f6c391bad9ceb76e73a7a2c9', // Coinbase Deposit
+  '0xf35eaa2f01cdbc11c5181751528970f95bfea253', // Binance Deposit
+  '0xe7f1c19c6535b42351561b8fa4c8b43098952cf1', // Kraken Deposit
+  '0x7b1c50a4ce324f19cf674f41d5b1c4deff2e0612', // Htx Deposit
+  '0xa03400e098f4421b34a3a44a1b4e571419517687', // HTX Hotwallet
+
 ]);
 
 // Known L2 bridge contracts
