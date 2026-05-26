@@ -59,6 +59,7 @@ const CEX_RECEIVERS = new Set([
   '0x51c72848c68a965f66fa7a88855f9f7784502a7f', // Wintermute
   '0xbd7d6a9ad7865463de44b05f04559f65e3b11704', // Spark
   '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon 
+  '0x18e296053cbdf986196903e889b7dca7a73882f6', // Bybit
 ]);
 
 // Known L2 bridge contracts
@@ -95,6 +96,11 @@ const SWAP_ROUTERS = new Set([
   '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer Vault
   '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
   '0x6a000f20005980200259b80c5102003040001068', // ParaSwap
+  '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho
+  '0x1f2f10d1c40777ae1da742455c65828ff36df387', // jaredfromsubway
+  '0x8f10b468b06c6fd214b65f87778827f7d113f996', // Kyberswap
+  '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640', // Uniswap
+  '0x1601843c5e9bc251a3272907010afa41fa18347e', // Spark
 ]);
 
 // Thresholds for new rules
