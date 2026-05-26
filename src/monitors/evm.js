@@ -60,6 +60,7 @@ const CEX_RECEIVERS = new Set([
   '0xbd7d6a9ad7865463de44b05f04559f65e3b11704', // Spark
   '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon 
   '0x18e296053cbdf986196903e889b7dca7a73882f6', // Bybit
+  '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho
 ]);
 
 // Known L2 bridge contracts
