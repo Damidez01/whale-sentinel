@@ -54,4 +54,9 @@ function fmtETH(wei, decimals = 18) {
   return (Number(BigInt(wei)) / Math.pow(10, decimals)).toFixed(2);
 }
 
-module.exports = { getPrice, toUSD, fmtUSD, fmtETH };
+/** Get price by symbol (for tokens module) */
+async function getTokenPrice(symbol) {
+  return getPrice(symbol);
+}
+
+module.exports = { getPrice, toUSD, fmtUSD, fmtETH, getTokenPrice };

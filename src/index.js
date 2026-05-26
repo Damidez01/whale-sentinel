@@ -4,6 +4,7 @@ const { startTornadoMonitor }  = require('./monitors/tornado');
 const { startTHORChainMonitor } = require('./monitors/thorchain');
 const { startEVMMonitor }       = require('./monitors/evm');
 const { startChainflipMonitor } = require('./monitors/chainflip');
+const { startTokenMonitor }     = require('./monitors/tokens');
 const { sendStartup }           = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
 const logger = require('./utils/logger');
@@ -46,6 +47,10 @@ async function main() {
   } else {
     logger.warn('[Main] No ETHERSCAN_API_KEY — Chainflip monitor disabled');
   }
+
+  // ERC20 token monitor
+  startTokenMonitor();
+  modules.push('Token Monitor (USDC, USDT, DAI, WBTC)');
 
   modules.push(`Intelligence — ${getFlaggedCount()} wallets pre-loaded from disk`);
 

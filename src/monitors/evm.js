@@ -42,7 +42,6 @@ const CEX_RECEIVERS = new Set([
   '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
   '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
   '0x2364ab81b114b6bfbf39514a7d0396ce0e0ddff1', // BitKan Deposit
-  '0xbea9f7fd27f4ee20066f18def0bc586ec221055a', // Hyperunit
   '0x2a45907f94df93388801ae72fe810eac75926a1d', // Bitpoint
   '0x835033bd90b943fa0d0f8e5382d9dc568d3fbd96', // Bitflyer
   '0x5c7bcd6e7de5423a257d81b442095a1a6ced35c5', // Accross Protocol
@@ -52,7 +51,14 @@ const CEX_RECEIVERS = new Set([
   '0xe7f1c19c6535b42351561b8fa4c8b43098952cf1', // Kraken Deposit
   '0x7b1c50a4ce324f19cf674f41d5b1c4deff2e0612', // Htx Deposit
   '0xa03400e098f4421b34a3a44a1b4e571419517687', // HTX Hotwallet
-
+  '0xcffad3200574698b78f32232aa9d63eabd290703', // Cryptocom
+  '0x17e5545b11b468072283cee1f066a059fb0dbf24', // Bithumb
+  '0xae8cbb7e810f59fd0dd939b2b6623756d91b174a', // Near intent deposit
+  '0xef317e433b0836f294866d43f67d6871b609b351', // BingX
+  '0xc7bf35c9a3bdd1b1c19a6963de669cb45191a019', // Coinbase
+  '0x51c72848c68a965f66fa7a88855f9f7784502a7f', // Wintermute
+  '0xbd7d6a9ad7865463de44b05f04559f65e3b11704', // Spark
+  '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon 
 ]);
 
 // Known L2 bridge contracts
@@ -71,6 +77,35 @@ const TC_POOLS = new Set([
 
 // Chainflip vault (ETH mainnet)
 const CHAINFLIP_VAULT = '0xf5e10380213880111522dd0efd3dbb45b9f62bcc';
+
+// DEX/Swap routers — exclude from accumulation (normal trading activity)
+const SWAP_ROUTERS = new Set([
+  '0xe66b31678d6c16e9ebf358268a790b763c133750', // 0x Exchange Proxy
+  '0xba3cb449bd2b4adddbc894d8697f5170800eadec', // CoW Protocol
+  '0x9008d19f58aabd9ed0d60971565aa8510560ab41', // CoW Protocol Settlement
+  '0x7a250d5630b4cf539739df2c5dacb4c659f2488d', // Uniswap V2 Router
+  '0xe592427a0aece92de3edee1f18e0157c05861564', // Uniswap V3 Router
+  '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45', // Uniswap V3 Router 2
+  '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b', // Uniswap Universal Router
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router 2
+  '0x1111111254eeb25477b68fb85ed929f73a960582', // 1inch V5
+  '0x1111111254fb6c44bac0bed2854e76f90643097d', // 1inch V4
+  '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f', // SushiSwap Router
+  '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // 0x Exchange Proxy v2
+  '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer Vault
+  '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
+  '0x6a000f20005980200259b80c5102003040001068', // ParaSwap
+]);
+
+// Thresholds for new rules
+const FRESH_WALLET_MAX_TXS  = Number(process.env.FRESH_WALLET_MAX_TXS  || 10);
+const FRESH_WALLET_MIN_USD  = Number(process.env.FRESH_WALLET_MIN_USD  || 200_000);
+const PEEL_MIN_LEGS         = Number(process.env.PEEL_MIN_LEGS         || 3);
+const PEEL_WIN_MIN          = Number(process.env.PEEL_WIN_MIN          || 120);
+const PEEL_MIN_USD          = Number(process.env.PEEL_MIN_USD          || 20_000);
+const FANOUT_MIN_LEGS       = Number(process.env.FANOUT_MIN_LEGS       || 5);
+const FANOUT_WIN_MIN        = Number(process.env.FANOUT_WIN_MIN        || 30);
+const FANOUT_TOTAL_USD      = Number(process.env.FANOUT_TOTAL_USD      || 1_000_000);
 
 const CHAIN_CONFIG = [
   { name: 'ETH',  wssKey: 'ALCHEMY_ETH_WSS'  },
@@ -164,23 +199,73 @@ async function checkChainflip(tx, usdValue, chain) {
   });
 }
 
+// ── Etherscan wallet age check ───────────────────────────────
+const axios = require('axios');
+
+async function getWalletTxCount(address) {
+  const cacheKey = `walletage:${address.toLowerCase()}`;
+  const cached   = getKey(cacheKey);
+  if (cached !== null) return Number(cached);
+
+  try {
+    const { data } = await axios.get('https://api.etherscan.io/api', {
+      params: {
+        module:  'account',
+        action:  'txlist',
+        address,
+        page:    1,
+        offset:  15, // fetch up to 15 txs — enough to determine freshness
+        sort:    'asc',
+        apikey:  process.env.ETHERSCAN_API_KEY,
+      },
+      timeout: 5000,
+    });
+
+    const count = data?.result?.length || 0;
+    setKey(cacheKey, count.toString(), 86400); // cache 24hrs
+    return count;
+  } catch {
+    return 999; // assume not fresh on error
+  }
+}
+
+async function isFreshWallet(address) {
+  const count = await getWalletTxCount(address);
+  return count <= FRESH_WALLET_MAX_TXS;
+}
+
 // Rule 3: Rapid accumulation
 async function checkRapidAccumulation(tx, usdValue, chain) {
   if (usdValue < ACCUM_MIN_USD) return;
   if (!tx.to) return;
-  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
-  const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
+  const toLower   = tx.to.toLowerCase();
+  const fromLower = tx.from?.toLowerCase();
+
+  // Skip CEX receivers — normal deposits
+  if (CEX_RECEIVERS.has(toLower)) return;
+
+  // Skip swap routers — normal trading activity
+  if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
+
+  const key   = `accum:${chain}:${toLower}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
 
   if (count === ACCUM_COUNT) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
+    // Check if receiving wallet is fresh
+    const fresh    = await isFreshWallet(tx.to);
+    const freshTag = fresh ? `
+🆕 *Fresh wallet* (< ${FRESH_WALLET_MAX_TXS} lifetime txs)` : '';
+
     sendAlert({
       chain,
-      title: `🚨 CRITICAL — Rapid Fund Accumulation`,
-      alertId: `evm:accum:${chain}:${tx.to}`,
+      title: fresh
+        ? `🚨 CRITICAL — Fresh Wallet Rapid Accumulation`
+        : `🚨 CRITICAL — Rapid Fund Accumulation`,
+      alertId: `evm:accum:${chain}:${toLower}`,
       txHash: tx.hash,
       wallet: tx.to,
       walletLink: true,
@@ -190,9 +275,10 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
         `*${count} incoming txns in ${ACCUM_WIN_MIN} min*`,
         `Total received: *${fmtUSD(totalUSD)}*`,
         `Each: ≥ ${fmtUSD(ACCUM_MIN_USD)}`,
+        freshTag,
         ``,
         `⚠️ Matches theft relay, phishing, or CEX hack pattern`,
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
     });
   }
 
@@ -204,7 +290,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     sendAlert({
       chain,
       title: `🚨 CRITICAL — Accumulation Escalating`,
-      alertId: `evm:accum:escalate:${chain}:${tx.to}:${count}`,
+      alertId: `evm:accum:escalate:${chain}:${toLower}:${count}`,
       txHash: tx.hash,
       wallet: tx.to,
       walletLink: true,
@@ -318,6 +404,142 @@ async function checkDormantWallet(tx, usdValue, chain) {
   setKey(key, Date.now().toString(), 86400 * 30);
 }
 
+// Rule 7: Peel chain detection
+async function checkPeelChain(tx, usdValue, chain) {
+  if (usdValue < PEEL_MIN_USD) return;
+  if (!tx.from || !tx.to) return;
+  if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
+
+  const fromLower = tx.from.toLowerCase();
+
+  // Track outgoing destinations from this wallet
+  const peelKey = `peel:out:${chain}:${fromLower}`;
+  windowAdd(peelKey, tx.to.toLowerCase(), PEEL_WIN_MIN * 60);
+  const destinations = windowGet(peelKey, PEEL_WIN_MIN * 60);
+  const uniqueDests  = new Set(destinations).size;
+
+  if (uniqueDests === PEEL_MIN_LEGS) {
+    // Check if destinations are fresh wallets
+    const destSample = [...new Set(destinations)].slice(0, 3);
+    const freshChecks = await Promise.all(destSample.map(d => isFreshWallet(d)));
+    const freshCount  = freshChecks.filter(Boolean).length;
+
+    if (freshCount >= 2) {
+      const totalKey = `peel:total:${chain}:${fromLower}`;
+      const allVals  = windowGet(totalKey, PEEL_WIN_MIN * 60);
+      const totalUSD = allVals.reduce((s, v) => s + Number(v), 0) || usdValue * uniqueDests;
+
+      sendAlert({
+        chain,
+        title: `🚨 CRITICAL — Peel Chain Detected`,
+        alertId: `evm:peel:${chain}:${fromLower}:${uniqueDests}`,
+        txHash: tx.hash,
+        wallet: tx.from,
+        walletLink: true,
+        body: [
+          `Source wallet: \`${shortAddr(tx.from)}\``,
+          ``,
+          `Distributing to *${uniqueDests} different wallets*`,
+          `within ${PEEL_WIN_MIN} min`,
+          `Fresh recipients: ${freshCount}/${destSample.length} checked`,
+          `Total distributed: *${fmtUSD(totalUSD || usdValue)}*`,
+          ``,
+          `🔴 Classic peel chain — layering stolen funds`,
+        ].join('\n'),
+      });
+    }
+  }
+
+  // Track total outgoing for this wallet
+  windowAdd(`peel:total:${chain}:${fromLower}`, usdValue, PEEL_WIN_MIN * 60);
+}
+
+// Rule 8: Fan-out pattern
+async function checkFanOut(tx, usdValue, chain) {
+  if (usdValue < PEEL_MIN_USD) return;
+  if (!tx.from || !tx.to) return;
+  if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
+
+  const fromLower  = tx.from.toLowerCase();
+  const fanKey     = `fanout:${chain}:${fromLower}`;
+
+  windowAdd(fanKey, tx.to.toLowerCase(), FANOUT_WIN_MIN * 60);
+  const dests      = windowGet(fanKey, FANOUT_WIN_MIN * 60);
+  const uniqueDests = new Set(dests).size;
+
+  if (uniqueDests === FANOUT_MIN_LEGS) {
+    // Check total value sent
+    const valKey   = `fanout:val:${chain}:${fromLower}`;
+    windowAdd(valKey, usdValue, FANOUT_WIN_MIN * 60);
+    const allVals  = windowGet(valKey, FANOUT_WIN_MIN * 60);
+    const totalUSD = allVals.reduce((s, v) => s + Number(v), 0);
+
+    if (totalUSD >= FANOUT_TOTAL_USD) {
+      sendAlert({
+        chain,
+        title: `🚨 CRITICAL — Fund Distribution Pattern`,
+        alertId: `evm:fanout:${chain}:${fromLower}:${uniqueDests}`,
+        txHash: tx.hash,
+        wallet: tx.from,
+        walletLink: true,
+        body: [
+          `Source wallet: \`${shortAddr(tx.from)}\``,
+          ``,
+          `Sent to *${uniqueDests} different wallets*`,
+          `in ${FANOUT_WIN_MIN} min`,
+          `Total distributed: *${fmtUSD(totalUSD)}*`,
+          `Each: ~${fmtUSD(totalUSD / uniqueDests)}`,
+          ``,
+          `⚠️ Large fund distribution — possible layering`,
+        ].join('\n'),
+      });
+    }
+  }
+
+  // Always track value
+  windowAdd(`fanout:val:${chain}:${fromLower}`, usdValue, FANOUT_WIN_MIN * 60);
+}
+
+// Rule 9: Single large tx to fresh wallet
+async function checkFreshWalletLargeSend(tx, usdValue, chain) {
+  if (usdValue < FRESH_WALLET_MIN_USD) return;
+  if (!tx.to) return;
+  if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
+
+  // Only check once per wallet per day
+  const cacheKey = `freshcheck:${tx.to.toLowerCase()}`;
+  if (getKey(cacheKey)) return;
+  setKey(cacheKey, '1', 86400);
+
+  const fresh = await isFreshWallet(tx.to);
+  if (!fresh) return;
+
+  // Check if destination touches TC/Chainflip — escalate if so
+  const isSuspiciousDest = TC_POOLS.has(tx.to.toLowerCase()) ||
+    tx.to.toLowerCase() === CHAINFLIP_VAULT;
+
+  sendAlert({
+    chain,
+    title: isSuspiciousDest
+      ? `🚨 CRITICAL — Fresh Wallet → Suspicious Destination`
+      : `🟠 HIGH — Large Send to Fresh Wallet`,
+    alertId: `evm:fresh:${chain}:${tx.to}`,
+    txHash: tx.hash,
+    wallet: tx.to,
+    walletLink: true,
+    body: [
+      `From: \`${shortAddr(tx.from)}\``,
+      `To:   \`${shortAddr(tx.to)}\` 🆕 Fresh wallet`,
+      `Amount: *${fmtUSD(usdValue)}*`,
+      ``,
+      `⚠️ Recipient has < ${FRESH_WALLET_MAX_TXS} lifetime transactions`,
+    ].join('\n'),
+  });
+}
+
 // ── Main tx handler ──────────────────────────────────────────
 
 async function handleTx(tx, chain) {
@@ -339,6 +561,9 @@ async function handleTx(tx, chain) {
       checkStructuring(tx, usdValue, chain),
       checkFlaggedWallet(tx, usdValue, chain),
       checkDormantWallet(tx, usdValue, chain),
+      checkPeelChain(tx, usdValue, chain),
+      checkFanOut(tx, usdValue, chain),
+      checkFreshWalletLargeSend(tx, usdValue, chain),
     ]);
 
   } catch (err) {
