@@ -41,26 +41,6 @@ const CEX_RECEIVERS = new Set([
   '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // OKX Deposit
   '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
   '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
-  '0x2364ab81b114b6bfbf39514a7d0396ce0e0ddff1', // BitKan Deposit
-  '0x2a45907f94df93388801ae72fe810eac75926a1d', // Bitpoint
-  '0x835033bd90b943fa0d0f8e5382d9dc568d3fbd96', // Bitflyer
-  '0x5c7bcd6e7de5423a257d81b442095a1a6ced35c5', // Accross Protocol
-  '0xeae7380dd4cef6fbd1144f49e4d1e6964258a4f4', // Wintermute
-  '0x2c0ec52e11eee4b8f6c391bad9ceb76e73a7a2c9', // Coinbase Deposit
-  '0xf35eaa2f01cdbc11c5181751528970f95bfea253', // Binance Deposit
-  '0xe7f1c19c6535b42351561b8fa4c8b43098952cf1', // Kraken Deposit
-  '0x7b1c50a4ce324f19cf674f41d5b1c4deff2e0612', // Htx Deposit
-  '0xa03400e098f4421b34a3a44a1b4e571419517687', // HTX Hotwallet
-  '0xcffad3200574698b78f32232aa9d63eabd290703', // Cryptocom
-  '0x17e5545b11b468072283cee1f066a059fb0dbf24', // Bithumb
-  '0xae8cbb7e810f59fd0dd939b2b6623756d91b174a', // Near intent deposit
-  '0xef317e433b0836f294866d43f67d6871b609b351', // BingX
-  '0xc7bf35c9a3bdd1b1c19a6963de669cb45191a019', // Coinbase
-  '0x51c72848c68a965f66fa7a88855f9f7784502a7f', // Wintermute
-  '0xbd7d6a9ad7865463de44b05f04559f65e3b11704', // Spark
-  '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon 
-  '0x18e296053cbdf986196903e889b7dca7a73882f6', // Bybit
-  '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho
 ]);
 
 // Known L2 bridge contracts
@@ -97,11 +77,6 @@ const SWAP_ROUTERS = new Set([
   '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer Vault
   '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
   '0x6a000f20005980200259b80c5102003040001068', // ParaSwap
-  '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho
-  '0x1f2f10d1c40777ae1da742455c65828ff36df387', // jaredfromsubway
-  '0x8f10b468b06c6fd214b65f87778827f7d113f996', // Kyberswap
-  '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640', // Uniswap
-  '0x1601843c5e9bc251a3272907010afa41fa18347e', // Spark
 ]);
 
 // Thresholds for new rules
@@ -209,36 +184,75 @@ async function checkChainflip(tx, usdValue, chain) {
 // ── Etherscan wallet age check ───────────────────────────────
 const axios = require('axios');
 
+const HIGH_VOLUME_THRESHOLD = Number(process.env.HIGH_VOLUME_THRESHOLD || 500);
+
 async function getWalletTxCount(address) {
+  // Only applies to ETH mainnet — Etherscan API
   const cacheKey = `walletage:${address.toLowerCase()}`;
   const cached   = getKey(cacheKey);
   if (cached !== null) return Number(cached);
 
+  if (!process.env.ETHERSCAN_API_KEY) return 50; // assume normal if no key
+
   try {
+    // Use txlistinternal to get total tx count more accurately
     const { data } = await axios.get('https://api.etherscan.io/api', {
       params: {
-        module:  'account',
-        action:  'txlist',
+        module:  'proxy',
+        action:  'eth_getTransactionCount',
         address,
-        page:    1,
-        offset:  15, // fetch up to 15 txs — enough to determine freshness
-        sort:    'asc',
+        tag:     'latest',
         apikey:  process.env.ETHERSCAN_API_KEY,
       },
       timeout: 5000,
     });
 
-    const count = data?.result?.length || 0;
-    setKey(cacheKey, count.toString(), 86400); // cache 24hrs
-    return count;
+    // Result is hex tx nonce = number of txs sent
+    const nonce = parseInt(data?.result, 16) || 0;
+
+    // Also check received txs via txlist
+    const { data: data2 } = await axios.get('https://api.etherscan.io/api', {
+      params: {
+        module:  'account',
+        action:  'txlist',
+        address,
+        page:    1,
+        offset:  600, // fetch up to 600 to detect high volume
+        sort:    'desc',
+        apikey:  process.env.ETHERSCAN_API_KEY,
+      },
+      timeout: 5000,
+    });
+
+    const receivedCount = data2?.result?.length || 0;
+    const totalCount    = Math.max(nonce, receivedCount);
+
+    setKey(cacheKey, totalCount.toString(), 86400); // cache 24hrs
+    return totalCount;
   } catch {
-    return 999; // assume not fresh on error
+    return 50; // assume normal on error
   }
+}
+
+async function getWalletCategory(address) {
+  // Returns: 'fresh' | 'normal' | 'high_volume'
+  // Only meaningful for ETH mainnet
+  const count = await getWalletTxCount(address);
+  if (count <= FRESH_WALLET_MAX_TXS)  return 'fresh';
+  if (count >= HIGH_VOLUME_THRESHOLD) return 'high_volume';
+  return 'normal';
 }
 
 async function isFreshWallet(address) {
   const count = await getWalletTxCount(address);
   return count <= FRESH_WALLET_MAX_TXS;
+}
+
+async function isHighVolumeWallet(address, chain) {
+  // Only check ETH mainnet — no API for Base/ARB without extra keys
+  if (chain !== 'ETH') return false;
+  const count = await getWalletTxCount(address);
+  return count >= HIGH_VOLUME_THRESHOLD;
 }
 
 // Rule 3: Rapid accumulation
@@ -249,10 +263,8 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   const toLower   = tx.to.toLowerCase();
   const fromLower = tx.from?.toLowerCase();
 
-  // Skip CEX receivers — normal deposits
+  // Layer 1: Hardcoded critical suppressions (instant, no API)
   if (CEX_RECEIVERS.has(toLower)) return;
-
-  // Skip swap routers — normal trading activity
   if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
 
   const key   = `accum:${chain}:${toLower}`;
@@ -262,8 +274,11 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
-    // Check if receiving wallet is fresh
-    const fresh    = await isFreshWallet(tx.to);
+    // Layer 2: Dynamic suppression — high volume = CEX/router we don't know about
+    const category = chain === 'ETH' ? await getWalletCategory(toLower) : 'normal';
+    if (category === 'high_volume') return; // auto suppress
+
+    const fresh    = category === 'fresh';
     const freshTag = fresh ? `
 🆕 *Fresh wallet* (< ${FRESH_WALLET_MAX_TXS} lifetime txs)` : '';
 
@@ -427,6 +442,9 @@ async function checkPeelChain(tx, usdValue, chain) {
   const uniqueDests  = new Set(destinations).size;
 
   if (uniqueDests === PEEL_MIN_LEGS) {
+    // Layer 2: suppress if source is high volume (CEX/router)
+    if (chain === 'ETH' && await isHighVolumeWallet(fromLower, chain)) return;
+
     // Check if destinations are fresh wallets
     const destSample = [...new Set(destinations)].slice(0, 3);
     const freshChecks = await Promise.all(destSample.map(d => isFreshWallet(d)));
@@ -477,7 +495,9 @@ async function checkFanOut(tx, usdValue, chain) {
   const uniqueDests = new Set(dests).size;
 
   if (uniqueDests === FANOUT_MIN_LEGS) {
-    // Check total value sent
+    // Layer 2: suppress if source is high volume (CEX/router)
+    if (chain === 'ETH' && await isHighVolumeWallet(fromLower, chain)) return;
+
     const valKey   = `fanout:val:${chain}:${fromLower}`;
     windowAdd(valKey, usdValue, FANOUT_WIN_MIN * 60);
     const allVals  = windowGet(valKey, FANOUT_WIN_MIN * 60);

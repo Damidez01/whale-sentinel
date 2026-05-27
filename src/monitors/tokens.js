@@ -85,7 +85,7 @@ async function handleTokenTransfer(log, token) {
 
     if (usdValue < token.minUSD) return;
 
-    // Accumulation check — same wallet receiving multiple large token transfers
+    // ── Per-token accumulation ──
     const accumKey = `tokaccum:${to}:${token.symbol}`;
     const count    = windowAdd(accumKey, usdValue, ACCUM_WIN_MIN * 60);
 
@@ -113,7 +113,6 @@ async function handleTokenTransfer(log, token) {
       });
     }
 
-    // Escalate every 2
     if (count > ACCUM_COUNT && (count - ACCUM_COUNT) % 2 === 0) {
       const all      = windowGet(accumKey, ACCUM_WIN_MIN * 60);
       const totalUSD = all.reduce((s, v) => s + Number(v), 0);
@@ -133,6 +132,34 @@ async function handleTokenTransfer(log, token) {
           `Total: *${fmtUSD(totalUSD)}*`,
           ``,
           `🔴 Still actively receiving ${token.symbol}`,
+        ].join('\n'),
+      });
+    }
+
+    // ── Cross-token combined accumulation ──
+    // Tracks total USD across ALL tokens for this wallet
+    const combinedKey   = `tokaccum:combined:${to}`;
+    const combinedCount = windowAdd(combinedKey, usdValue, ACCUM_WIN_MIN * 60);
+    const combinedVals  = windowGet(combinedKey, ACCUM_WIN_MIN * 60);
+    const combinedUSD   = combinedVals.reduce((s, v) => s + Number(v), 0);
+
+    if (combinedCount === ACCUM_COUNT && count < ACCUM_COUNT) {
+      // Only alert if per-token didn't already alert (avoid double alert)
+      sendAlert({
+        chain: 'ETH',
+        title: `🚨 CRITICAL — Multi-Token Rapid Accumulation`,
+        alertId: `tok:accum:combined:${to}`,
+        txHash: log.transactionHash,
+        wallet: to,
+        walletLink: true,
+        body: [
+          `Receiving wallet: \`${shortAddr(to)}\``,
+          ``,
+          `*${combinedCount} token transfers in ${ACCUM_WIN_MIN} min*`,
+          `Combined total: *${fmtUSD(combinedUSD)}*`,
+          `Latest: ${fmtUSD(usdValue)} ${token.symbol}`,
+          ``,
+          `⚠️ Mixed token accumulation — USDC/USDT/DAI/WBTC combined`,
         ].join('\n'),
       });
     }
