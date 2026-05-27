@@ -117,6 +117,7 @@ const SWAP_ROUTERS = new Set([
   '0x8f10b468b06c6fd214b65f87778827f7d113f996', // Kyber
   '0x37305b1cd40574e4c5ce33f8e8306be057fd7341', // Sky (MakerDAO)
   '0xb6807116b3b1b321a390594e31ecd6e0076f6278', // Swapswift
+  '0x1601843c5e9bc251a3272907010afa41fa18347e', // 
 ]);
 
 function shortAddr(addr) {
