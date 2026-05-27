@@ -107,6 +107,12 @@ const SWAP_ROUTERS = new Set([
   '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
   '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24', // Uniswap V2 Router 02
   '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router
+  '0x555f240e556788e65306754a0ba6e7a76c2ab59e', // none
+  '0x51c72848c68a965f66fa7a88855f9f7784502a7f', //wintermute
+  '0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0', // kyber
+  '0xbee3211ab312a8d065c4fef0247448e17a8da000', // MM
+  '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640', // Uniswap usdc
+  '0x1f2f10d1c40777ae1da742455c65828ff36df387', // jef
 ]);
 
 function shortAddr(addr) {

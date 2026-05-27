@@ -46,6 +46,7 @@ const CEX_RECEIVERS = new Set([
   '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
   '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
   '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH Lido
+  '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon
 ]);
 
 // Known L2 bridge contracts
@@ -82,9 +83,15 @@ const SWAP_ROUTERS = new Set([
   '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer Vault
   '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
   '0x6a000f20005980200259b80c5102003040001068', // ParaSwap
-  '0x0000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4 Pool Manager
+  '0x000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4 Pool Manager
   '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
   '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24', // Uniswap V2 Router 02
+  '0x555f240e556788e65306754a0ba6e7a76c2ab59e', // none
+  '0x51c72848c68a965f66fa7a88855f9f7784502a7f', //wintermute
+  '0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0', // kyber
+  '0xbee3211ab312a8d065c4fef0247448e17a8da000', // MM
+  '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640', // Uniswap usdc
+  '0x1f2f10d1c40777ae1da742455c65828ff36df387', // jef
 ]);
 
 // Thresholds for new rules
