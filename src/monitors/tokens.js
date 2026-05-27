@@ -103,6 +103,10 @@ const SWAP_ROUTERS = new Set([
   '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f',
   '0xdef1c0ded9bec7f1a1670819833240f027b25eff',
   '0xba12222222228d8ba445958a75a0704d566bf2c8',
+  '0x0000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4 Pool Manager
+  '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
+  '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24', // Uniswap V2 Router 02
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router
 ]);
 
 function shortAddr(addr) {
@@ -138,9 +142,20 @@ async function handleTokenTransfer(log, token) {
 
     if (usdValue < token.minUSD) return;
 
-    // Layer 2: Dynamic suppression — check BEFORE adding to window
-    // Checks BOTH ETH txns AND token txns — catches DeFi contracts + CEX hot wallets
-    if (await isHighVolumeAddress(to)) return;
+    // Layer 2: Dynamic suppression — runs on FIRST transfer seen from this wallet
+    // Cached 24hrs — zero cost on subsequent transfers
+    const firstSeenKey = `tokfirst:${to}`;
+    const alreadyChecked = getKey(firstSeenKey);
+    if (!alreadyChecked) {
+      // First time we see this wallet — check immediately
+      setKey(firstSeenKey, '1', 86400);
+      if (await isHighVolumeAddress(to)) {
+        setKey(`suppress:${to}`, '1', 86400);
+        return;
+      }
+    } else if (getKey(`suppress:${to}`)) {
+      return; // already flagged as high volume
+    }
 
     // ── Per-token accumulation ──
     const accumKey = `tokaccum:${to}:${token.symbol}`;

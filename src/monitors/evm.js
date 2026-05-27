@@ -82,6 +82,9 @@ const SWAP_ROUTERS = new Set([
   '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer Vault
   '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
   '0x6a000f20005980200259b80c5102003040001068', // ParaSwap
+  '0x0000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4 Pool Manager
+  '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
+  '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24', // Uniswap V2 Router 02
 ]);
 
 // Thresholds for new rules
@@ -270,10 +273,19 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   if (CEX_RECEIVERS.has(toLower)) return;
   if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
 
-  // Layer 2: Dynamic suppression — check BEFORE adding to window
+  // Layer 2: Dynamic suppression — runs on FIRST tx from this wallet (cached 24hrs)
   if (chain === 'ETH') {
-    const category = await getWalletCategory(toLower);
-    if (category === 'high_volume') return;
+    const firstSeenKey = `evmfirst:${toLower}`;
+    if (!getKey(firstSeenKey)) {
+      setKey(firstSeenKey, '1', 86400);
+      const category = await getWalletCategory(toLower);
+      if (category === 'high_volume') {
+        setKey(`suppress:${toLower}`, '1', 86400);
+        return;
+      }
+    } else if (getKey(`suppress:${toLower}`)) {
+      return;
+    }
   }
 
   const key   = `accum:${chain}:${toLower}`;
