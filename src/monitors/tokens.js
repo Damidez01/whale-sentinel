@@ -5,7 +5,48 @@ const { sendAlert } = require('../alerts/telegram');
 const { getTokenPrice, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 
-// ERC20 Transfer event topic
+const axios = require('axios');
+
+// ── Combined wallet activity check (ETH + token txns) ────────
+async function isHighVolumeAddress(address) {
+  const cacheKey = `walletage:${address.toLowerCase()}`;
+  const cached   = getKey(cacheKey);
+  if (cached !== null) return Number(cached) >= HIGH_VOLUME_THRESHOLD;
+
+  if (!process.env.ETHERSCAN_API_KEY) return false;
+
+  try {
+    const apiKey = process.env.ETHERSCAN_API_KEY;
+    const base   = 'https://api.etherscan.io/api';
+
+    const [r1, r2, r3] = await Promise.all([
+      axios.get(base, {
+        params: { module: 'proxy', action: 'eth_getTransactionCount', address, tag: 'latest', apikey: apiKey },
+        timeout: 5000,
+      }),
+      axios.get(base, {
+        params: { module: 'account', action: 'txlist', address, page: 1, offset: 600, sort: 'desc', apikey: apiKey },
+        timeout: 5000,
+      }),
+      axios.get(base, {
+        params: { module: 'account', action: 'tokentx', address, page: 1, offset: 600, sort: 'desc', apikey: apiKey },
+        timeout: 5000,
+      }),
+    ]);
+
+    const nonce      = parseInt(r1.data?.result, 16) || 0;
+    const ethCount   = r2.data?.result?.length || 0;
+    const tokCount   = r3.data?.result?.length || 0;
+    const total      = Math.max(nonce, ethCount, tokCount);
+
+    setKey(cacheKey, total.toString(), 86400); // shared cache with evm.js
+    return total >= HIGH_VOLUME_THRESHOLD;
+  } catch {
+    return false; // assume normal on error — better to alert than miss
+  }
+}
+
+// ── ERC20 Transfer event topic
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 // Watched tokens — address: { symbol, decimals, minUSD }
@@ -41,7 +82,7 @@ const CEX_RECEIVERS = new Set([
   '0xf584f8728b874a6a5c7a8d4d387c9aae9172d621',
   '0x62425cd6bdcb6bfe51558ea465b063486b70dc9f',
   '0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511',
-  '0xbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho Protocol
+  '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho Protocol
   '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2', // Aave V3
   '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
   '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
@@ -98,9 +139,8 @@ async function handleTokenTransfer(log, token) {
     if (usdValue < token.minUSD) return;
 
     // Layer 2: Dynamic suppression — check BEFORE adding to window
-    // High volume wallets = DeFi protocols, CEX deposit contracts etc
-    const txCountCache = getKey(`walletage:${to}`);
-    if (txCountCache !== null && Number(txCountCache) >= HIGH_VOLUME_THRESHOLD) return;
+    // Checks BOTH ETH txns AND token txns — catches DeFi contracts + CEX hot wallets
+    if (await isHighVolumeAddress(to)) return;
 
     // ── Per-token accumulation ──
     const accumKey = `tokaccum:${to}:${token.symbol}`;

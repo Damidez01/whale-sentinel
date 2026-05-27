@@ -41,7 +41,7 @@ const CEX_RECEIVERS = new Set([
   '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // OKX Deposit
   '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
   '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
-  '0xbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho Protocol
+  '0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho Protocol
   '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2', // Aave V3
   '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
   '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
@@ -192,7 +192,8 @@ const axios = require('axios');
 const HIGH_VOLUME_THRESHOLD = Number(process.env.HIGH_VOLUME_THRESHOLD || 500);
 
 async function getWalletTxCount(address) {
-  // Only applies to ETH mainnet — Etherscan API
+  // Checks BOTH native ETH txns AND token transfers
+  // Covers: hot wallets (high ETH txns) + DeFi contracts (high token txns, 0 ETH txns)
   const cacheKey = `walletage:${address.toLowerCase()}`;
   const cached   = getKey(cacheKey);
   if (cached !== null) return Number(cached);
@@ -200,37 +201,34 @@ async function getWalletTxCount(address) {
   if (!process.env.ETHERSCAN_API_KEY) return 50; // assume normal if no key
 
   try {
-    // Use txlistinternal to get total tx count more accurately
-    const { data } = await axios.get('https://api.etherscan.io/api', {
-      params: {
-        module:  'proxy',
-        action:  'eth_getTransactionCount',
-        address,
-        tag:     'latest',
-        apikey:  process.env.ETHERSCAN_API_KEY,
-      },
-      timeout: 5000,
-    });
+    const apiKey = process.env.ETHERSCAN_API_KEY;
+    const base   = 'https://api.etherscan.io/api';
 
-    // Result is hex tx nonce = number of txs sent
-    const nonce = parseInt(data?.result, 16) || 0;
+    // Check 1: ETH tx nonce (sent txns)
+    const [r1, r2, r3] = await Promise.all([
+      // Native ETH nonce
+      axios.get(base, {
+        params: { module: 'proxy', action: 'eth_getTransactionCount', address, tag: 'latest', apikey: apiKey },
+        timeout: 5000,
+      }),
+      // Native ETH received txns
+      axios.get(base, {
+        params: { module: 'account', action: 'txlist', address, page: 1, offset: 600, sort: 'desc', apikey: apiKey },
+        timeout: 5000,
+      }),
+      // Token transfer txns (catches DeFi contracts like Morpho, Aave vaults)
+      axios.get(base, {
+        params: { module: 'account', action: 'tokentx', address, page: 1, offset: 600, sort: 'desc', apikey: apiKey },
+        timeout: 5000,
+      }),
+    ]);
 
-    // Also check received txs via txlist
-    const { data: data2 } = await axios.get('https://api.etherscan.io/api', {
-      params: {
-        module:  'account',
-        action:  'txlist',
-        address,
-        page:    1,
-        offset:  600, // fetch up to 600 to detect high volume
-        sort:    'desc',
-        apikey:  process.env.ETHERSCAN_API_KEY,
-      },
-      timeout: 5000,
-    });
+    const nonce       = parseInt(r1.data?.result, 16) || 0;
+    const ethTxCount  = r2.data?.result?.length || 0;
+    const tokTxCount  = r3.data?.result?.length || 0;
 
-    const receivedCount = data2?.result?.length || 0;
-    const totalCount    = Math.max(nonce, receivedCount);
+    // Use highest of all three — whichever is largest indicates activity level
+    const totalCount = Math.max(nonce, ethTxCount, tokTxCount);
 
     setKey(cacheKey, totalCount.toString(), 86400); // cache 24hrs
     return totalCount;
