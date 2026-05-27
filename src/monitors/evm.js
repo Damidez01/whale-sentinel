@@ -41,6 +41,11 @@ const CEX_RECEIVERS = new Set([
   '0x652a2ade712e21b9f83672bde4462c6f8723a30b', // OKX Deposit
   '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', // Relay
   '0xf30ba13e4b04ce5dc4d254ae5fa95477800f0eb0', // Kraken
+  '0xbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho Protocol
+  '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2', // Aave V3
+  '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
+  '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
+  '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH Lido
 ]);
 
 // Known L2 bridge contracts
@@ -267,6 +272,12 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   if (CEX_RECEIVERS.has(toLower)) return;
   if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
 
+  // Layer 2: Dynamic suppression — check BEFORE adding to window
+  if (chain === 'ETH') {
+    const category = await getWalletCategory(toLower);
+    if (category === 'high_volume') return;
+  }
+
   const key   = `accum:${chain}:${toLower}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
 
@@ -274,9 +285,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
-    // Layer 2: Dynamic suppression — high volume = CEX/router we don't know about
     const category = chain === 'ETH' ? await getWalletCategory(toLower) : 'normal';
-    if (category === 'high_volume') return; // auto suppress
 
     const fresh    = category === 'fresh';
     const freshTag = fresh ? `

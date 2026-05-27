@@ -16,8 +16,15 @@ const WATCHED_TOKENS = {
   '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': { symbol: 'WBTC',  decimals: 8,  minUSD: 100_000 },
 };
 
-const ACCUM_COUNT   = Number(process.env.ACCUM_COUNT   || 3);
-const ACCUM_WIN_MIN = Number(process.env.ACCUM_WIN_MIN || 15);
+const ACCUM_COUNT      = Number(process.env.ACCUM_COUNT      || 3);
+const ACCUM_WIN_MIN    = Number(process.env.ACCUM_WIN_MIN    || 15);
+const PEEL_MIN_LEGS    = Number(process.env.PEEL_MIN_LEGS    || 3);
+const PEEL_WIN_MIN     = Number(process.env.PEEL_WIN_MIN     || 120);
+const PEEL_MIN_USD     = Number(process.env.PEEL_MIN_USD     || 20_000);
+const FANOUT_MIN_LEGS  = Number(process.env.FANOUT_MIN_LEGS  || 5);
+const FANOUT_WIN_MIN   = Number(process.env.FANOUT_WIN_MIN   || 30);
+const FANOUT_TOTAL_USD = Number(process.env.FANOUT_TOTAL_USD || 1_000_000);
+const HIGH_VOLUME_THRESHOLD = Number(process.env.HIGH_VOLUME_THRESHOLD || 500);
 
 // CEX receivers to suppress (same as evm.js)
 const CEX_RECEIVERS = new Set([
@@ -34,6 +41,11 @@ const CEX_RECEIVERS = new Set([
   '0xf584f8728b874a6a5c7a8d4d387c9aae9172d621',
   '0x62425cd6bdcb6bfe51558ea465b063486b70dc9f',
   '0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511',
+  '0xbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb', // Morpho Protocol
+  '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2', // Aave V3
+  '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
+  '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
+  '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH Lido
 ]);
 
 // Swap routers to suppress
@@ -84,6 +96,11 @@ async function handleTokenTransfer(log, token) {
       (await getTokenPrice(token.symbol) || 1);
 
     if (usdValue < token.minUSD) return;
+
+    // Layer 2: Dynamic suppression — check BEFORE adding to window
+    // High volume wallets = DeFi protocols, CEX deposit contracts etc
+    const txCountCache = getKey(`walletage:${to}`);
+    if (txCountCache !== null && Number(txCountCache) >= HIGH_VOLUME_THRESHOLD) return;
 
     // ── Per-token accumulation ──
     const accumKey = `tokaccum:${to}:${token.symbol}`;
