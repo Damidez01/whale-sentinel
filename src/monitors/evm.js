@@ -47,6 +47,7 @@ const CEX_RECEIVERS = new Set([
   '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
   '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH Lido
   '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon
+  '0xb6807116b3b1b321a390594e31ecd6e0076f6278', // Swapswift
 ]);
 
 // Known L2 bridge contracts
