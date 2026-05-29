@@ -6,7 +6,7 @@ const { getTokenPrice, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 
 const axios = require('axios');
-const { isFreshWallet, preCheckWallet, isSuppressed, FRESH_MAX_TXS } = require('../utils/walletcheck');
+const { isFreshWallet, shouldSuppress, FRESH_MAX_TXS } = require('../utils/walletcheck');
 
 // Legacy — replaced by walletcheck module
 async function isHighVolumeAddress_UNUSED(address) {
@@ -143,13 +143,9 @@ async function handleTokenTransfer(log, token) {
 
     if (usdValue < token.minUSD) return;
 
-    // Layer 2: Pre-check on first encounter (shared cache with evm.js)
-    if (await preCheckWallet(to, 'ETH')) return;
-    if (isSuppressed(to, 'ETH')) return;
-
-    // Layer 3: FRESH WALLET ONLY — receiver must have < 10 lifetime txns
-    const receiverFresh = await isFreshWallet(to, 'ETH');
-    if (!receiverFresh) return;
+    // Sync cache check — no await, no race condition
+    // Unknown wallets (first sight) are skipped until enrichment completes
+    if (shouldSuppress(to, 'ETH')) return;
 
     // ── Per-token accumulation ──
     const accumKey = `tokaccum:${to}:${token.symbol}`;
@@ -230,10 +226,9 @@ async function handleTokenTransfer(log, token) {
     }
 
 
-    // ── Peel chain detection — sender must be fresh ──
+    // ── Peel chain detection — sender must be confirmed fresh (sync) ──
     if (usdValue >= PEEL_MIN_USD) {
-      const senderFresh = await isFreshWallet(from, 'ETH');
-      if (!senderFresh) return;
+      if (shouldSuppress(from, 'ETH')) return;
       const peelKey     = `tokpeel:out:${from}:${token.symbol}`;
       windowAdd(peelKey, to, PEEL_WIN_MIN * 60);
       const dests       = windowGet(peelKey, PEEL_WIN_MIN * 60);
@@ -267,10 +262,9 @@ async function handleTokenTransfer(log, token) {
       windowAdd(`tokpeel:val:${from}:${token.symbol}`, usdValue, PEEL_WIN_MIN * 60);
     }
 
-    // ── Fan-out detection — sender must be fresh ──
+    // ── Fan-out detection — sender must be confirmed fresh (sync) ──
     if (usdValue >= PEEL_MIN_USD) {
-      const fanSenderFresh = await isFreshWallet(from, 'ETH');
-      if (!fanSenderFresh) return;
+      if (shouldSuppress(from, 'ETH')) return;
       const fanKey      = `tokfan:${from}:${token.symbol}`;
       windowAdd(fanKey, to, FANOUT_WIN_MIN * 60);
       const fanDests    = windowGet(fanKey, FANOUT_WIN_MIN * 60);

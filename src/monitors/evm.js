@@ -189,7 +189,7 @@ async function checkChainflip(tx, usdValue, chain) {
   });
 }
 
-const { isFreshWallet, isHighVolumeWallet, getWalletCategory, preCheckWallet, isSuppressed, FRESH_MAX_TXS } = require('../utils/walletcheck');
+const { isFreshWallet, shouldSuppress, FRESH_MAX_TXS } = require('../utils/walletcheck');
 const axios = require('axios');
 
 // Wallet check functions moved to src/utils/walletcheck.js
@@ -202,17 +202,14 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   const toLower   = tx.to.toLowerCase();
   const fromLower = tx.from?.toLowerCase();
 
-  // Layer 1: Hardcoded suppressions (instant)
+  // Layer 1: Hardcoded suppressions (instant, no API)
   if (CEX_RECEIVERS.has(toLower)) return;
   if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
 
-  // Layer 2: Pre-check on first encounter (cached 24hrs)
-  if (await preCheckWallet(toLower, chain)) return;
-  if (isSuppressed(toLower, chain)) return;
-
-  // Layer 3: FRESH WALLET ONLY — receiver must have < 10 lifetime txns
-  const receiverFresh = await isFreshWallet(toLower, chain);
-  if (!receiverFresh) return;
+  // Layer 2: Sync cache check — no await, no race condition
+  // shouldSuppress returns true for: unknown (first sight), normal, high volume
+  // Only returns false for confirmed 'fresh' wallets
+  if (shouldSuppress(toLower, chain)) return;
 
   const key   = `accum:${chain}:${toLower}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
@@ -372,11 +369,8 @@ async function checkPeelChain(tx, usdValue, chain) {
 
   const fromLower = tx.from.toLowerCase();
 
-  // SENDER must be fresh wallet
-  if (await preCheckWallet(fromLower, chain)) return;
-  if (isSuppressed(fromLower, chain)) return;
-  const senderFresh = await isFreshWallet(fromLower, chain);
-  if (!senderFresh) return;
+  // SENDER must be confirmed fresh — sync check only
+  if (shouldSuppress(fromLower, chain)) return;
 
   // Track outgoing destinations from this wallet
   const peelKey = `peel:out:${chain}:${fromLower}`;
@@ -385,9 +379,9 @@ async function checkPeelChain(tx, usdValue, chain) {
   const uniqueDests  = new Set(destinations).size;
 
   if (uniqueDests === PEEL_MIN_LEGS) {
-    // Check if at least 2 destinations are fresh wallets
+    // Check if at least 2 destinations are confirmed fresh — sync only
     const destSample  = [...new Set(destinations)].slice(0, 3);
-    const freshChecks = await Promise.all(destSample.map(d => isFreshWallet(d, chain)));
+    const freshChecks = destSample.map(d => isFreshWallet(d, chain));
     const freshCount  = freshChecks.filter(Boolean).length;
 
     if (freshCount >= 2) {
@@ -429,11 +423,8 @@ async function checkFanOut(tx, usdValue, chain) {
 
   const fromLower = tx.from.toLowerCase();
 
-  // SENDER must be fresh wallet
-  if (await preCheckWallet(fromLower, chain)) return;
-  if (isSuppressed(fromLower, chain)) return;
-  const fanSenderFresh = await isFreshWallet(fromLower, chain);
-  if (!fanSenderFresh) return;
+  // SENDER must be confirmed fresh — sync check only
+  if (shouldSuppress(fromLower, chain)) return;
 
   const fanKey      = `fanout:${chain}:${fromLower}`;
   windowAdd(fanKey, tx.to.toLowerCase(), FANOUT_WIN_MIN * 60);
@@ -480,13 +471,8 @@ async function checkFreshWalletLargeSend(tx, usdValue, chain) {
   if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
   if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
-  // Only check once per wallet per day
-  const cacheKey = `freshcheck:${tx.to.toLowerCase()}`;
-  if (getKey(cacheKey)) return;
-  setKey(cacheKey, '1', 86400);
-
-  const fresh = await isFreshWallet(tx.to, chain);
-  if (!fresh) return;
+  // Sync check — walletcheck handles caching internally
+  if (!isFreshWallet(tx.to, chain)) return;
 
   // Check if destination touches TC/Chainflip — escalate if so
   const isSuspiciousDest = TC_POOLS.has(tx.to.toLowerCase()) ||
