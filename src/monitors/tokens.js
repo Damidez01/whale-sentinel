@@ -6,9 +6,10 @@ const { getTokenPrice, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 
 const axios = require('axios');
+const { isFreshWallet, preCheckWallet, isSuppressed, FRESH_MAX_TXS } = require('../utils/walletcheck');
 
-// ── Combined wallet activity check (ETH + token txns) ────────
-async function isHighVolumeAddress(address) {
+// Legacy — replaced by walletcheck module
+async function isHighVolumeAddress_UNUSED(address) {
   const cacheKey = `walletage:${address.toLowerCase()}`;
   const cached   = getKey(cacheKey);
   if (cached !== null) return Number(cached) >= HIGH_VOLUME_THRESHOLD;
@@ -107,17 +108,6 @@ const SWAP_ROUTERS = new Set([
   '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
   '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24', // Uniswap V2 Router 02
   '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal Router
-  '0x555f240e556788e65306754a0ba6e7a76c2ab59e', // none
-  '0x51c72848c68a965f66fa7a88855f9f7784502a7f', //wintermute
-  '0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0', // kyber
-  '0xbee3211ab312a8d065c4fef0247448e17a8da000', // MM
-  '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640', // Uniswap usdc
-  '0x1f2f10d1c40777ae1da742455c65828ff36df387', // jef
-  '0x555f240e556788e65306754a0ba6e7a76c2ab59e', 
-  '0x8f10b468b06c6fd214b65f87778827f7d113f996', // Kyber
-  '0x37305b1cd40574e4c5ce33f8e8306be057fd7341', // Sky (MakerDAO)
-  '0xb6807116b3b1b321a390594e31ecd6e0076f6278', // Swapswift
-  '0x1601843c5e9bc251a3272907010afa41fa18347e', // 
 ]);
 
 function shortAddr(addr) {
@@ -153,20 +143,13 @@ async function handleTokenTransfer(log, token) {
 
     if (usdValue < token.minUSD) return;
 
-    // Layer 2: Dynamic suppression — runs on FIRST transfer seen from this wallet
-    // Cached 24hrs — zero cost on subsequent transfers
-    const firstSeenKey = `tokfirst:${to}`;
-    const alreadyChecked = getKey(firstSeenKey);
-    if (!alreadyChecked) {
-      // First time we see this wallet — check immediately
-      setKey(firstSeenKey, '1', 86400);
-      if (await isHighVolumeAddress(to)) {
-        setKey(`suppress:${to}`, '1', 86400);
-        return;
-      }
-    } else if (getKey(`suppress:${to}`)) {
-      return; // already flagged as high volume
-    }
+    // Layer 2: Pre-check on first encounter (shared cache with evm.js)
+    if (await preCheckWallet(to, 'ETH')) return;
+    if (isSuppressed(to, 'ETH')) return;
+
+    // Layer 3: FRESH WALLET ONLY — receiver must have < 10 lifetime txns
+    const receiverFresh = await isFreshWallet(to, 'ETH');
+    if (!receiverFresh) return;
 
     // ── Per-token accumulation ──
     const accumKey = `tokaccum:${to}:${token.symbol}`;
@@ -219,8 +202,7 @@ async function handleTokenTransfer(log, token) {
       });
     }
 
-    // ── Cross-token combined accumulation ──
-    // Tracks total USD across ALL tokens for this wallet
+    // ── Cross-token combined accumulation (receiver already confirmed fresh above) ──
     const combinedKey   = `tokaccum:combined:${to}`;
     const combinedCount = windowAdd(combinedKey, usdValue, ACCUM_WIN_MIN * 60);
     const combinedVals  = windowGet(combinedKey, ACCUM_WIN_MIN * 60);
@@ -248,8 +230,10 @@ async function handleTokenTransfer(log, token) {
     }
 
 
-    // ── Peel chain detection ──
+    // ── Peel chain detection — sender must be fresh ──
     if (usdValue >= PEEL_MIN_USD) {
+      const senderFresh = await isFreshWallet(from, 'ETH');
+      if (!senderFresh) return;
       const peelKey     = `tokpeel:out:${from}:${token.symbol}`;
       windowAdd(peelKey, to, PEEL_WIN_MIN * 60);
       const dests       = windowGet(peelKey, PEEL_WIN_MIN * 60);
@@ -283,8 +267,10 @@ async function handleTokenTransfer(log, token) {
       windowAdd(`tokpeel:val:${from}:${token.symbol}`, usdValue, PEEL_WIN_MIN * 60);
     }
 
-    // ── Fan-out detection ──
+    // ── Fan-out detection — sender must be fresh ──
     if (usdValue >= PEEL_MIN_USD) {
+      const fanSenderFresh = await isFreshWallet(from, 'ETH');
+      if (!fanSenderFresh) return;
       const fanKey      = `tokfan:${from}:${token.symbol}`;
       windowAdd(fanKey, to, FANOUT_WIN_MIN * 60);
       const fanDests    = windowGet(fanKey, FANOUT_WIN_MIN * 60);

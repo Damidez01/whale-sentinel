@@ -46,8 +46,6 @@ const CEX_RECEIVERS = new Set([
   '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
   '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
   '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH Lido
-  '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon
-  '0xb6807116b3b1b321a390594e31ecd6e0076f6278', // Swapswift
 ]);
 
 // Known L2 bridge contracts
@@ -84,18 +82,9 @@ const SWAP_ROUTERS = new Set([
   '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer Vault
   '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
   '0x6a000f20005980200259b80c5102003040001068', // ParaSwap
-  '0x000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4 Pool Manager
+  '0x0000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4 Pool Manager
   '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
   '0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24', // Uniswap V2 Router 02
-  '0x555f240e556788e65306754a0ba6e7a76c2ab59e', // none
-  '0x51c72848c68a965f66fa7a88855f9f7784502a7f', //wintermute
-  '0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0', // kyber
-  '0xbee3211ab312a8d065c4fef0247448e17a8da000', // MM
-  '0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640', // Uniswap usdc
-  '0x1f2f10d1c40777ae1da742455c65828ff36df387', // jef
-  '0x555f240e556788e65306754a0ba6e7a76c2ab59e', 
-  '0x8f10b468b06c6fd214b65f87778827f7d113f996', // Kyber
-  '0x37305b1cd40574e4c5ce33f8e8306be057fd7341', // Sky (MakerDAO)
 ]);
 
 // Thresholds for new rules
@@ -200,77 +189,10 @@ async function checkChainflip(tx, usdValue, chain) {
   });
 }
 
-// ── Etherscan wallet age check ───────────────────────────────
+const { isFreshWallet, isHighVolumeWallet, getWalletCategory, preCheckWallet, isSuppressed, FRESH_MAX_TXS } = require('../utils/walletcheck');
 const axios = require('axios');
 
-const HIGH_VOLUME_THRESHOLD = Number(process.env.HIGH_VOLUME_THRESHOLD || 500);
-
-async function getWalletTxCount(address) {
-  // Checks BOTH native ETH txns AND token transfers
-  // Covers: hot wallets (high ETH txns) + DeFi contracts (high token txns, 0 ETH txns)
-  const cacheKey = `walletage:${address.toLowerCase()}`;
-  const cached   = getKey(cacheKey);
-  if (cached !== null) return Number(cached);
-
-  if (!process.env.ETHERSCAN_API_KEY) return 50; // assume normal if no key
-
-  try {
-    const apiKey = process.env.ETHERSCAN_API_KEY;
-    const base   = 'https://api.etherscan.io/api';
-
-    // Check 1: ETH tx nonce (sent txns)
-    const [r1, r2, r3] = await Promise.all([
-      // Native ETH nonce
-      axios.get(base, {
-        params: { module: 'proxy', action: 'eth_getTransactionCount', address, tag: 'latest', apikey: apiKey },
-        timeout: 5000,
-      }),
-      // Native ETH received txns
-      axios.get(base, {
-        params: { module: 'account', action: 'txlist', address, page: 1, offset: 600, sort: 'desc', apikey: apiKey },
-        timeout: 5000,
-      }),
-      // Token transfer txns (catches DeFi contracts like Morpho, Aave vaults)
-      axios.get(base, {
-        params: { module: 'account', action: 'tokentx', address, page: 1, offset: 600, sort: 'desc', apikey: apiKey },
-        timeout: 5000,
-      }),
-    ]);
-
-    const nonce       = parseInt(r1.data?.result, 16) || 0;
-    const ethTxCount  = r2.data?.result?.length || 0;
-    const tokTxCount  = r3.data?.result?.length || 0;
-
-    // Use highest of all three — whichever is largest indicates activity level
-    const totalCount = Math.max(nonce, ethTxCount, tokTxCount);
-
-    setKey(cacheKey, totalCount.toString(), 86400); // cache 24hrs
-    return totalCount;
-  } catch {
-    return 50; // assume normal on error
-  }
-}
-
-async function getWalletCategory(address) {
-  // Returns: 'fresh' | 'normal' | 'high_volume'
-  // Only meaningful for ETH mainnet
-  const count = await getWalletTxCount(address);
-  if (count <= FRESH_WALLET_MAX_TXS)  return 'fresh';
-  if (count >= HIGH_VOLUME_THRESHOLD) return 'high_volume';
-  return 'normal';
-}
-
-async function isFreshWallet(address) {
-  const count = await getWalletTxCount(address);
-  return count <= FRESH_WALLET_MAX_TXS;
-}
-
-async function isHighVolumeWallet(address, chain) {
-  // Only check ETH mainnet — no API for Base/ARB without extra keys
-  if (chain !== 'ETH') return false;
-  const count = await getWalletTxCount(address);
-  return count >= HIGH_VOLUME_THRESHOLD;
-}
+// Wallet check functions moved to src/utils/walletcheck.js
 
 // Rule 3: Rapid accumulation
 async function checkRapidAccumulation(tx, usdValue, chain) {
@@ -280,24 +202,17 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   const toLower   = tx.to.toLowerCase();
   const fromLower = tx.from?.toLowerCase();
 
-  // Layer 1: Hardcoded critical suppressions (instant, no API)
+  // Layer 1: Hardcoded suppressions (instant)
   if (CEX_RECEIVERS.has(toLower)) return;
   if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
 
-  // Layer 2: Dynamic suppression — runs on FIRST tx from this wallet (cached 24hrs)
-  if (chain === 'ETH') {
-    const firstSeenKey = `evmfirst:${toLower}`;
-    if (!getKey(firstSeenKey)) {
-      setKey(firstSeenKey, '1', 86400);
-      const category = await getWalletCategory(toLower);
-      if (category === 'high_volume') {
-        setKey(`suppress:${toLower}`, '1', 86400);
-        return;
-      }
-    } else if (getKey(`suppress:${toLower}`)) {
-      return;
-    }
-  }
+  // Layer 2: Pre-check on first encounter (cached 24hrs)
+  if (await preCheckWallet(toLower, chain)) return;
+  if (isSuppressed(toLower, chain)) return;
+
+  // Layer 3: FRESH WALLET ONLY — receiver must have < 10 lifetime txns
+  const receiverFresh = await isFreshWallet(toLower, chain);
+  if (!receiverFresh) return;
 
   const key   = `accum:${chain}:${toLower}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
@@ -306,17 +221,9 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
-    const category = chain === 'ETH' ? await getWalletCategory(toLower) : 'normal';
-
-    const fresh    = category === 'fresh';
-    const freshTag = fresh ? `
-🆕 *Fresh wallet* (< ${FRESH_WALLET_MAX_TXS} lifetime txs)` : '';
-
     sendAlert({
       chain,
-      title: fresh
-        ? `🚨 CRITICAL — Fresh Wallet Rapid Accumulation`
-        : `🚨 CRITICAL — Rapid Fund Accumulation`,
+      title: `🚨 CRITICAL — Fresh Wallet Rapid Accumulation`,
       alertId: `evm:accum:${chain}:${toLower}`,
       txHash: tx.hash,
       wallet: tx.to,
@@ -327,7 +234,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
         `*${count} incoming txns in ${ACCUM_WIN_MIN} min*`,
         `Total received: *${fmtUSD(totalUSD)}*`,
         `Each: ≥ ${fmtUSD(ACCUM_MIN_USD)}`,
-        freshTag,
+        `🆕 Fresh wallet (< ${FRESH_MAX_TXS} lifetime txs)`,
         ``,
         `⚠️ Matches theft relay, phishing, or CEX hack pattern`,
       ].filter(Boolean).join('\n'),
@@ -465,6 +372,12 @@ async function checkPeelChain(tx, usdValue, chain) {
 
   const fromLower = tx.from.toLowerCase();
 
+  // SENDER must be fresh wallet
+  if (await preCheckWallet(fromLower, chain)) return;
+  if (isSuppressed(fromLower, chain)) return;
+  const senderFresh = await isFreshWallet(fromLower, chain);
+  if (!senderFresh) return;
+
   // Track outgoing destinations from this wallet
   const peelKey = `peel:out:${chain}:${fromLower}`;
   windowAdd(peelKey, tx.to.toLowerCase(), PEEL_WIN_MIN * 60);
@@ -472,12 +385,9 @@ async function checkPeelChain(tx, usdValue, chain) {
   const uniqueDests  = new Set(destinations).size;
 
   if (uniqueDests === PEEL_MIN_LEGS) {
-    // Layer 2: suppress if source is high volume (CEX/router)
-    if (chain === 'ETH' && await isHighVolumeWallet(fromLower, chain)) return;
-
-    // Check if destinations are fresh wallets
-    const destSample = [...new Set(destinations)].slice(0, 3);
-    const freshChecks = await Promise.all(destSample.map(d => isFreshWallet(d)));
+    // Check if at least 2 destinations are fresh wallets
+    const destSample  = [...new Set(destinations)].slice(0, 3);
+    const freshChecks = await Promise.all(destSample.map(d => isFreshWallet(d, chain)));
     const freshCount  = freshChecks.filter(Boolean).length;
 
     if (freshCount >= 2) {
@@ -517,16 +427,20 @@ async function checkFanOut(tx, usdValue, chain) {
   if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
   if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
-  const fromLower  = tx.from.toLowerCase();
-  const fanKey     = `fanout:${chain}:${fromLower}`;
+  const fromLower = tx.from.toLowerCase();
 
+  // SENDER must be fresh wallet
+  if (await preCheckWallet(fromLower, chain)) return;
+  if (isSuppressed(fromLower, chain)) return;
+  const fanSenderFresh = await isFreshWallet(fromLower, chain);
+  if (!fanSenderFresh) return;
+
+  const fanKey      = `fanout:${chain}:${fromLower}`;
   windowAdd(fanKey, tx.to.toLowerCase(), FANOUT_WIN_MIN * 60);
-  const dests      = windowGet(fanKey, FANOUT_WIN_MIN * 60);
+  const dests       = windowGet(fanKey, FANOUT_WIN_MIN * 60);
   const uniqueDests = new Set(dests).size;
 
   if (uniqueDests === FANOUT_MIN_LEGS) {
-    // Layer 2: suppress if source is high volume (CEX/router)
-    if (chain === 'ETH' && await isHighVolumeWallet(fromLower, chain)) return;
 
     const valKey   = `fanout:val:${chain}:${fromLower}`;
     windowAdd(valKey, usdValue, FANOUT_WIN_MIN * 60);
@@ -571,7 +485,7 @@ async function checkFreshWalletLargeSend(tx, usdValue, chain) {
   if (getKey(cacheKey)) return;
   setKey(cacheKey, '1', 86400);
 
-  const fresh = await isFreshWallet(tx.to);
+  const fresh = await isFreshWallet(tx.to, chain);
   if (!fresh) return;
 
   // Check if destination touches TC/Chainflip — escalate if so
@@ -592,7 +506,7 @@ async function checkFreshWalletLargeSend(tx, usdValue, chain) {
       `To:   \`${shortAddr(tx.to)}\` 🆕 Fresh wallet`,
       `Amount: *${fmtUSD(usdValue)}*`,
       ``,
-      `⚠️ Recipient has < ${FRESH_WALLET_MAX_TXS} lifetime transactions`,
+      `⚠️ Recipient has < ${FRESH_MAX_TXS} lifetime transactions`,
     ].join('\n'),
   });
 }
