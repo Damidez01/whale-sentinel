@@ -7,7 +7,7 @@ const logger = require('../utils/logger');
 
 const VAULT          = '0xf5e10380213880111522dd0efd3dbb45b9f62bcc';
 const ETHERSCAN_KEY  = process.env.ETHERSCAN_API_KEY;
-const MIN_USD        = Number(process.env.CHAINFLIP_MIN_USD        || 300_000);
+const MIN_USD        = Number(process.env.CHAINFLIP_MIN_USD        || 500_000);
 const BURST_COUNT    = Number(process.env.CHAINFLIP_BURST_COUNT    || 3);
 const BURST_WIN_MIN  = Number(process.env.CHAINFLIP_BURST_WIN_MIN  || 30);
 const POLL_MS        = 30_000; // 30 seconds
@@ -16,21 +16,34 @@ const POLL_MS        = 30_000; // 30 seconds
 
 async function fetchVaultTxs() {
   try {
-    const { data } = await axios.get('https://api.etherscan.io/api', {
-      params: {
-        module:     'account',
-        action:     'txlist',
-        address:    VAULT,
-        sort:       'desc',
-        page:       1,
-        offset:     20, // last 20 txns
-        apikey:     ETHERSCAN_KEY,
-      },
-      timeout: 10_000,
-    });
+    const base = 'https://api.etherscan.io/api';
+    const params = {
+      address:  VAULT,
+      sort:     'desc',
+      page:     1,
+      offset:   20,
+      apikey:   ETHERSCAN_KEY,
+    };
 
-    if (data.status !== '1') return [];
-    return data.result || [];
+    // Fetch both normal txns AND internal txns in parallel
+    // Internal txns catch: Rango → Chainflip, MetaMask Bridge → Chainflip etc
+    const [r1, r2] = await Promise.all([
+      axios.get(base, { params: { ...params, module: 'account', action: 'txlist' },         timeout: 10_000 }),
+      axios.get(base, { params: { ...params, module: 'account', action: 'txlistinternal' }, timeout: 10_000 }),
+    ]);
+
+    const normal   = (r1.data?.status === '1' ? r1.data.result : []) || [];
+    const internal = (r2.data?.status === '1' ? r2.data.result : []) || [];
+
+    // Merge and deduplicate by hash
+    const seen = new Set();
+    const all  = [];
+    for (const tx of [...normal, ...internal]) {
+      const key = tx.hash + (tx.traceId || '');
+      if (!seen.has(key)) { seen.add(key); all.push(tx); }
+    }
+
+    return all;
   } catch (err) {
     logger.error('[CF] Etherscan fetch failed', { error: err.message });
     return [];
