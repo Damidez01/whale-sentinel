@@ -51,6 +51,12 @@ const CEX_RECEIVERS = new Set([
   '0xc36442b4a4522e871399cd717abdd847ab11fe88', // Uniswap V3 Positions
   '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
   '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH Lido
+  '0x00000000219ab540356cbb839cbe05303d7705fa', // Beacon
+  '0xb6807116b3b1b321a390594e31ecd6e0076f6278', // Swapswift
+  '0x1601843c5e9bc251a3272907010afa41fa18347e', // 
+  '0x00dad40510a882b634c06bc46b4d62b7aa136cd9', //
+  '0xc9f5296eb3ac266c94568d790b6e91eba7d76a11', // CEXIO
+  '0x88dcdd4a0a58b7e2208805d547043c37dca2b6dc', // Shakepay
 ]);
 
 // Known L2 bridge contracts
@@ -192,7 +198,6 @@ async function checkChainflip(tx, usdValue, chain) {
   });
 }
 
-const { isFreshWallet, shouldSuppress, FRESH_MAX_TXS } = require('../utils/walletcheck');
 const { isFreshEOA, suppressAddress, FRESH_MAX_NONCE } = require('../utils/nonce');
 const axios = require('axios');
 
@@ -206,14 +211,9 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
   const toLower   = tx.to.toLowerCase();
   const fromLower = tx.from?.toLowerCase();
 
-  // Layer 1: Hardcoded suppressions (instant, no API)
+  // Hardcoded suppressions only (instant, no API, no race condition)
   if (CEX_RECEIVERS.has(toLower)) return;
   if (SWAP_ROUTERS.has(toLower) || SWAP_ROUTERS.has(fromLower)) return;
-
-  // Layer 2: Sync cache check — no await, no race condition
-  // shouldSuppress returns true for: unknown (first sight), normal, high volume
-  // Only returns false for confirmed 'fresh' wallets
-  if (shouldSuppress(toLower, chain)) return;
 
   const key   = `accum:${chain}:${toLower}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
@@ -235,7 +235,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
         `*${count} incoming txns in ${ACCUM_WIN_MIN} min*`,
         `Total received: *${fmtUSD(totalUSD)}*`,
         `Each: ≥ ${fmtUSD(ACCUM_MIN_USD)}`,
-        `🆕 Fresh wallet (< ${FRESH_MAX_TXS} lifetime txs)`,
+        `🆕 Fresh wallet (nonce ≤ 10)`,
         ``,
         `⚠️ Matches theft relay, phishing, or CEX hack pattern`,
       ].filter(Boolean).join('\n'),
@@ -373,8 +373,8 @@ async function checkPeelChain(tx, usdValue, chain) {
 
   const fromLower = tx.from.toLowerCase();
 
-  // SENDER must be confirmed fresh — sync check only
-  if (shouldSuppress(fromLower, chain)) return;
+  // SENDER must be confirmed fresh EOA via nonce check
+  if (!isFreshEOA(fromLower)) return;
 
   // Track outgoing destinations from this wallet
   const peelKey = `peel:out:${chain}:${fromLower}`;
@@ -383,9 +383,9 @@ async function checkPeelChain(tx, usdValue, chain) {
   const uniqueDests  = new Set(destinations).size;
 
   if (uniqueDests === PEEL_MIN_LEGS) {
-    // Check if at least 2 destinations are confirmed fresh — sync only
+    // Check if at least 2 destinations are confirmed fresh EOA
     const destSample  = [...new Set(destinations)].slice(0, 3);
-    const freshChecks = destSample.map(d => isFreshWallet(d, chain));
+    const freshChecks = destSample.map(d => isFreshEOA(d));
     const freshCount  = freshChecks.filter(Boolean).length;
 
     if (freshCount >= 2) {
@@ -427,8 +427,8 @@ async function checkFanOut(tx, usdValue, chain) {
 
   const fromLower = tx.from.toLowerCase();
 
-  // SENDER must be confirmed fresh — sync check only
-  if (shouldSuppress(fromLower, chain)) return;
+  // SENDER must be confirmed fresh EOA via nonce check
+  if (!isFreshEOA(fromLower)) return;
 
   const fanKey      = `fanout:${chain}:${fromLower}`;
   windowAdd(fanKey, tx.to.toLowerCase(), FANOUT_WIN_MIN * 60);
@@ -475,8 +475,8 @@ async function checkFreshWalletLargeSend(tx, usdValue, chain) {
   if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
   if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
-  // Sync check — walletcheck handles caching internally
-  if (!isFreshWallet(tx.to, chain)) return;
+  // Nonce-based fresh check
+  if (!isFreshEOA(tx.to?.toLowerCase())) return;
 
   // Check if destination touches TC/Chainflip — escalate if so
   const isSuspiciousDest = TC_POOLS.has(tx.to.toLowerCase()) ||
@@ -496,7 +496,7 @@ async function checkFreshWalletLargeSend(tx, usdValue, chain) {
       `To:   \`${shortAddr(tx.to)}\` 🆕 Fresh wallet`,
       `Amount: *${fmtUSD(usdValue)}*`,
       ``,
-      `⚠️ Recipient has < ${FRESH_MAX_TXS} lifetime transactions`,
+      `⚠️ Recipient has low nonce — likely fresh wallet`,
     ].join('\n'),
   });
 }
