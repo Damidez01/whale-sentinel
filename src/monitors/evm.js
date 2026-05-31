@@ -15,11 +15,6 @@ const ACCUM_MIN_USD     = Number(process.env.ACCUM_MIN_USD             || 100_00
 const ACCUM_COUNT       = Number(process.env.ACCUM_COUNT               || 3);
 const ACCUM_WIN_MIN     = Number(process.env.ACCUM_WIN_MIN             || 15);
 const CHAINFLIP_MIN_USD   = Number(process.env.CHAINFLIP_MIN_USD       || 500_000);
-const FANOUT_CACHE_USD    = Number(process.env.FANOUT_CACHE_USD         || 100_000); // min to cache wallet
-const FANOUT_MIN_LEGS     = Number(process.env.FANOUT_MIN_LEGS          || 4);       // unique destinations
-const FANOUT_WIN_SEC      = Number(process.env.FANOUT_WIN_SEC           || 120);     // 2 min window
-const FANOUT_SIMILAR_PCT  = Number(process.env.FANOUT_SIMILAR_PCT       || 15);      // ±15% similarity
-const TWOHOP_MIN_USD      = Number(process.env.TWOHOP_MIN_USD           || 100_000); // two-hop threshold
 
 // CEX hot wallets — suppress rapid accumulation alerts for these receivers
 const CEX_RECEIVERS = new Set([
@@ -198,7 +193,6 @@ async function checkChainflip(tx, usdValue, chain) {
   });
 }
 
-const { isFreshEOA, suppressAddress, FRESH_MAX_NONCE } = require('../utils/nonce');
 const axios = require('axios');
 
 // Wallet check functions moved to src/utils/walletcheck.js
@@ -501,120 +495,86 @@ async function checkFreshWalletLargeSend(tx, usdValue, chain) {
   });
 }
 
-// ── Nonce-based Fan-out rules ────────────────────────────────
+// ── Fan-out rules ────────────────────────────────────────────
 
-// Cache of fresh wallets that received large ETH — watching for fan-out
-// key: address → { receivedAt, totalReceived }
+const FANOUT_CACHE_USD = Number(process.env.FANOUT_CACHE_USD || 500_000); // min to cache
+const FANOUT_MIN_LEGS  = Number(process.env.FANOUT_MIN_LEGS  || 4);       // unique destinations
+const FANOUT_WIN_MIN   = Number(process.env.FANOUT_WIN_MIN   || 120);     // 2hr window in minutes
+
+// Cache of wallets that received large ETH — watching for fan-out
 const watchedWallets = new Map();
 
-// Cleanup watched wallets older than 2hrs
 setInterval(() => {
   const now = Date.now();
   for (const [addr, data] of watchedWallets) {
-    if (now - data.receivedAt > 2 * 3600 * 1000) watchedWallets.delete(addr);
+    if (now - data.receivedAt > FANOUT_WIN_MIN * 60 * 1000) watchedWallets.delete(addr);
   }
 }, 5 * 60 * 1000);
 
-// Rule A: Cache fresh EOA wallets receiving large ETH
-function trackFreshReceiver(tx, usdValue, chain) {
-  if (chain !== 'ETH') return; // nonce check only on ETH
+// Track wallets receiving large ETH
+function trackReceiver(tx, usdValue) {
   if (usdValue < FANOUT_CACHE_USD) return;
   if (!tx.to) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
+  if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
 
-  const toLower = tx.to.toLowerCase();
-
-  // Sync nonce check — skip contracts and non-fresh
-  if (suppressAddress(toLower)) return;
-
-  // Cache this wallet for fan-out watching
+  const toLower  = tx.to.toLowerCase();
   const existing = watchedWallets.get(toLower);
   watchedWallets.set(toLower, {
     receivedAt:    existing?.receivedAt || Date.now(),
     totalReceived: (existing?.totalReceived || 0) + usdValue,
-    chain,
   });
 }
 
-// Rule B: Two-hop bypass — fresh wallet receives from another fresh wallet
-function checkTwoHop(tx, usdValue, chain) {
-  if (chain !== 'ETH') return;
-  if (usdValue < TWOHOP_MIN_USD) return;
-  if (!tx.to || !tx.from) return;
-
-  const toLower   = tx.to.toLowerCase();
-  const fromLower = tx.from.toLowerCase();
-
-  // Both must be confirmed fresh EOA
-  if (!isFreshEOA(toLower))   return;
-  if (!isFreshEOA(fromLower)) return;
-
-  sendAlert({
-    chain,
-    title: `🟠 HIGH — Two-Hop Bypass Detected`,
-    alertId: `evm:twohop:${toLower}:${fromLower}`,
-    txHash: tx.hash,
-    wallet: tx.to,
-    walletLink: true,
-    body: [
-      `Fresh wallet receiving from another fresh wallet`,
-      ``,
-      `From: \`${shortAddr(tx.from)}\` 🆕 Fresh`,
-      `To:   \`${shortAddr(tx.to)}\` 🆕 Fresh`,
-      `Amount: *${fmtUSD(usdValue)}*`,
-      ``,
-      `⚠️ Possible layering — fresh wallet funding fresh wallet`,
-    ].join('\n'),
-  });
-}
-
-// Rule C: Fan-out detection — watched wallet sends to 4+ different addresses in 2 min
+// Fan-out: watched wallet sends to 4+ different addresses in 2hrs
 function checkFanOut(tx, usdValue, chain) {
-  if (!tx.from) return;
+  if (!tx.from || !tx.to) return;
   const fromLower = tx.from.toLowerCase();
+  const toLower   = tx.to.toLowerCase();
 
-  // Only check wallets we're watching
   const watched = watchedWallets.get(fromLower);
   if (!watched) return;
 
-  // Track outgoing destinations
-  const fanKey  = `nfanout:${fromLower}`;
-  const valKey  = `nfanout:val:${fromLower}`;
+  // Suppress known CEX/routers as both sender and receiver
+  if (CEX_RECEIVERS.has(fromLower)) return;
+  if (SWAP_ROUTERS.has(fromLower))  return;
+  if (CEX_RECEIVERS.has(toLower))   return;
+  if (SWAP_ROUTERS.has(toLower))    return;
 
-  windowAdd(fanKey, tx.to?.toLowerCase(), FANOUT_WIN_SEC);
-  windowAdd(valKey, usdValue, FANOUT_WIN_SEC);
+  const fanKey  = `fanout:${chain}:${fromLower}`;
+  const valKey  = `fanout:val:${chain}:${fromLower}`;
 
-  const dests      = windowGet(fanKey, FANOUT_WIN_SEC);
+  windowAdd(fanKey, tx.to.toLowerCase(), FANOUT_WIN_MIN * 60);
+  windowAdd(valKey, usdValue, FANOUT_WIN_MIN * 60);
+
+  const dests       = windowGet(fanKey, FANOUT_WIN_MIN * 60);
   const uniqueDests = new Set(dests).size;
 
   if (uniqueDests < FANOUT_MIN_LEGS) return;
 
-  // Check structural similarity — amounts within ±15% of each other
-  const vals    = windowGet(valKey, FANOUT_WIN_SEC).map(Number).filter(v => v > 0);
-  const avgVal  = vals.reduce((s, v) => s + v, 0) / vals.length;
-  const similar = vals.every(v => Math.abs(v - avgVal) / avgVal <= FANOUT_SIMILAR_PCT / 100);
+  const vals     = windowGet(valKey, FANOUT_WIN_MIN * 60).map(Number).filter(v => v > 0);
   const totalUSD = vals.reduce((s, v) => s + v, 0);
+  const avgVal   = totalUSD / vals.length;
 
   sendAlert({
     chain,
-    title: `🚨 CRITICAL — Fan-Out Movement Detected`,
-    alertId: `evm:fanout:${fromLower}:${uniqueDests}`,
+    title: `🚨 CRITICAL — Fund Distribution Pattern`,
+    alertId: `evm:fanout:${chain}:${fromLower}:${uniqueDests}`,
     txHash: tx.hash,
     wallet: tx.from,
     walletLink: true,
     body: [
-      `Source: \`${shortAddr(tx.from)}\` 🆕 Fresh wallet`,
+      `Source wallet: \`${shortAddr(tx.from)}\``,
+      `Previously received: *${fmtUSD(watched.totalReceived)}*`,
       ``,
-      `Spreading to *${uniqueDests} different wallets*`,
-      `within ${FANOUT_WIN_SEC} seconds`,
+      `Now distributing to *${uniqueDests} different wallets*`,
       `Total distributed: *${fmtUSD(totalUSD)}*`,
       `Avg per wallet: ~${fmtUSD(avgVal)}`,
-      similar ? `Pattern: Structurally similar amounts (±${FANOUT_SIMILAR_PCT}%)` : '',
       ``,
-      `🔴 Classic fund fragmentation pattern`,
-    ].filter(Boolean).join('\n'),
+      `🔴 Wallet received large funds then started distributing`,
+    ].join('\n'),
   });
 
-  // Remove from watched — prevent alert spam
   watchedWallets.delete(fromLower);
 }
 
@@ -632,9 +592,8 @@ async function handleTx(tx, chain) {
     const usdValue = await toUSD(BigInt(tx.value), 'ETH', 18);
     if (!usdValue || usdValue < 10_000) return;
 
-    // Sync rules (no await — cache reads only)
-    trackFreshReceiver(tx, usdValue, chain);
-    checkTwoHop(tx, usdValue, chain);
+    // Sync rules (no await — pure cache reads)
+    trackReceiver(tx, usdValue);
     checkFanOut(tx, usdValue, chain);
 
     // Async rules (existing, unchanged)

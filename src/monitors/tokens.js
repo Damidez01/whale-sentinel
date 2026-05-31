@@ -18,14 +18,18 @@ const WATCHED_TOKENS = {
 
 // Suspicious destinations — token transfers TO these = alert
 const SUSPICIOUS_DESTINATIONS = new Set([
+  '0xa160cdab225685da1d56aa342ad8841c3b53f291', // TC 100 ETH pool
+  '0x910cbd523d972eb0a6f4cae4618ad62622b39dbf', // TC 10 ETH pool
   '0xf5e10380213880111522dd0efd3dbb45b9f62bcc', // Chainflip vault
 ]);
 
 const DEST_LABELS = {
+  '0xa160cdab225685da1d56aa342ad8841c3b53f291': 'Tornado Cash 100 ETH Pool',
+  '0x910cbd523d972eb0a6f4cae4618ad62622b39dbf': 'Tornado Cash 10 ETH Pool',
   '0xf5e10380213880111522dd0efd3dbb45b9f62bcc': 'Chainflip Vault',
 };
 
-const MIN_USD = Number(process.env.TOKEN_SUSPICIOUS_MIN_USD || 10_000);
+const MIN_USD = Number(process.env.TOKEN_SUSPICIOUS_MIN_USD || 200_000);
 
 const ERC20_ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
 
@@ -80,7 +84,7 @@ async function handleTokenTransfer(log, token) {
 
     sendAlert({
       chain: 'ETH',
-      title: `🟠 HIGH — ${token.symbol} Sent to Chainflip Vault`,
+      title: `🚨 CRITICAL — ${token.symbol} Sent to ${destLabel}`,
       alertId: `tok:suspicious:${log.transactionHash}`,
       txHash: log.transactionHash,
       wallet: from,
@@ -115,7 +119,7 @@ function startTokenMonitor() {
   let lastMessageAt  = Date.now();
 
   function connect() {
-    logger.info('[Tokens] Connecting — watching USDC, USDT, DAI, WBTC transfers to Chainflip...');
+    logger.info('[Tokens] Connecting — watching USDC, USDT, DAI, WBTC transfers to TC/Chainflip...');
     ws = new WebSocket(wssUrl);
 
     ws.on('open', () => {
