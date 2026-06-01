@@ -64,6 +64,13 @@ const CEX_RECEIVERS = new Set([
   '0xc9f5296eb3ac266c94568d790b6e91eba7d76a11', // CEXIO
   '0x88dcdd4a0a58b7e2208805d547043c37dca2b6dc', // Shakepay
   '0xa397a8c2086c554b531c02e29f3291c9704b00c7', // Compound
+  '0x51C72848c68a965f66FA7a88855F9f7784502a7F', // wintermute
+  '0x1ab4973a48dc892cd9971ece8e01dcc7688f8f23', // bitget
+  '0x0427e84d26df80c64b180ee8217f7e962a03ec93', // chainflip desposit
+  '0xcffad3200574698b78f32232aa9d63eabd290703', // Cryptocom
+  '0xc7bf35c9a3bdd1b1c19a6963de669cb45191a019', // Cooinbase
+  '0x17e5545b11b468072283cee1f066a059fb0dbf24', // bithumb
+  '0x0084dfd7202e5f5c0c8be83503a492837ca3e95e', // Bithumb deposit
 ]);
 
 // Known L2 bridge contracts
