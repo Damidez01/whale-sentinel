@@ -367,9 +367,8 @@ async function handleTx(tx, chain) {
 // ── WebSocket connector ──────────────────────────────────────
 
 function isAlchemy(url) {
-  return url?.includes('alchemy.com');
+  return url?.includes('alchemy.com') || url?.includes('infura.io');
 }
-
 // Fetch full block with transactions
 async function fetchBlock(blockHash, httpUrl) {
   try {
