@@ -73,7 +73,7 @@ const CEX_RECEIVERS = new Set([
   '0x0084dfd7202e5f5c0c8be83503a492837ca3e95e', // Bithumb deposit
   '0x51c72848c68a965f66fa7a88855f9f7784502a7f', //wintermute
   '0xa294cca691e4c83b1fc0c8d63d9a3eef0a196de1', //Akuna
-  '0x4331c786523879efb265f89db57f27cb83f592d7'. //cryptocom
+  '0x4331c786523879efb265f89db57f27cb83f592d7', //cryptocom
 ]);
 
 // Known L2 bridge contracts
