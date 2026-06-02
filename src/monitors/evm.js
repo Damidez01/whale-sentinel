@@ -411,9 +411,12 @@ function connectChain(primaryUrl, chain, fallbackUrl = null) {
     return usingFallback && fallbackUrl ? fallbackUrl : primaryUrl;
   }
 
-  function getHttpUrl(wssUrl) {
-    return wssUrl.replace('wss://', 'https://').replace('ws://', 'http://');
-  }
+ function getHttpUrl(wssUrl) {
+  return wssUrl
+    .replace('wss://', 'https://')
+    .replace('ws://', 'http://')
+    .replace('/ws/v3/', '/v3/');
+}
 
   function connect() {
     const url       = currentUrl();
