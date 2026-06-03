@@ -72,8 +72,11 @@ const CEX_RECEIVERS = new Set([
   '0x17e5545b11b468072283cee1f066a059fb0dbf24', // bithumb
   '0x0084dfd7202e5f5c0c8be83503a492837ca3e95e', // Bithumb deposit
   '0x51c72848c68a965f66fa7a88855f9f7784502a7f', //wintermute
-  '0xa294cca691e4c83b1fc0c8d63d9a3eef0a196de1', //Akuna
+  '0xa294cca691e4c83b1fc0c8d63d9a3eef0a196de1', // Akuna
   '0x4331c786523879efb265f89db57f27cb83f592d7', //cryptocom
+  '0xb028b84783a0381d51dcf0e8ef04b5e502958618', // Bithumb
+  '0xe02cff66139fdbf60a7e05f7ce82ca657540ad6f', // Coinbase Deposit
+  '0xec9fc235a8064698a2533c2d489deff4fba8226b', // Amber
 ]);
 
 // Known L2 bridge contracts
