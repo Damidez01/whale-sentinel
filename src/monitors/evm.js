@@ -79,6 +79,9 @@ const CEX_RECEIVERS = new Set([
   '0xec9fc235a8064698a2533c2d489deff4fba8226b', // Amber
   '0x3e3a45a28e6f661776ebcd754eda1557c09f2858', // unknwon
   '0x3154cf16ccdb4c6d922629664174b904d80f2c35', // bridge
+  '0x0e58e8993100f1cbe45376c410f97f4893d9bfcd', // Upbit
+  '0x49048044d57e1c92a77f79988d21fa8faf74e97e', // Base Bridge
+  '0x4c82d1fbfe28c977cbb58d8c7ff8fcf9f70a2cca', // UniswapRouter
 ]);
 
 // Known L2 bridge contracts
@@ -344,6 +347,82 @@ async function checkDormantWallet(tx, usdValue, chain) {
   setKey(key, Date.now().toString(), 86400 * 30);
 }
 
+// ── Fan-out rules ────────────────────────────────────────────
+
+const FANOUT_CACHE_USD = Number(process.env.FANOUT_CACHE_USD || 500_000);
+const FANOUT_MIN_LEGS  = Number(process.env.FANOUT_MIN_LEGS  || 4);
+const FANOUT_WIN_MIN   = Number(process.env.FANOUT_WIN_MIN   || 120);
+
+const watchedWallets = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [addr, data] of watchedWallets) {
+    if (now - data.receivedAt > FANOUT_WIN_MIN * 60 * 1000) watchedWallets.delete(addr);
+  }
+}, 5 * 60 * 1000);
+
+function trackReceiver(tx, usdValue) {
+  if (usdValue < FANOUT_CACHE_USD) return;
+  if (!tx.to) return;
+  if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
+  if (SWAP_ROUTERS.has(tx.to.toLowerCase())) return;
+  const toLower  = tx.to.toLowerCase();
+  const existing = watchedWallets.get(toLower);
+  watchedWallets.set(toLower, {
+    receivedAt:    existing?.receivedAt || Date.now(),
+    totalReceived: (existing?.totalReceived || 0) + usdValue,
+  });
+}
+
+function checkFanOut(tx, usdValue, chain) {
+  if (!tx.from || !tx.to) return;
+  const fromLower = tx.from.toLowerCase();
+  const toLower   = tx.to.toLowerCase();
+
+  const watched = watchedWallets.get(fromLower);
+  if (!watched) return;
+
+  if (CEX_RECEIVERS.has(fromLower)) return;
+  if (SWAP_ROUTERS.has(fromLower))  return;
+  if (CEX_RECEIVERS.has(toLower))   return;
+  if (SWAP_ROUTERS.has(toLower))    return;
+
+  const fanKey = `fanout:${chain}:${fromLower}`;
+  const valKey = `fanout:val:${chain}:${fromLower}`;
+
+  windowAdd(fanKey, toLower, FANOUT_WIN_MIN * 60);
+  windowAdd(valKey, usdValue, FANOUT_WIN_MIN * 60);
+
+  const dests       = windowGet(fanKey, FANOUT_WIN_MIN * 60);
+  const uniqueDests = new Set(dests).size;
+  if (uniqueDests < FANOUT_MIN_LEGS) return;
+
+  const vals     = windowGet(valKey, FANOUT_WIN_MIN * 60).map(Number).filter(v => v > 0);
+  const totalUSD = vals.reduce((s, v) => s + v, 0);
+  const avgVal   = totalUSD / vals.length;
+
+  sendAlert({
+    chain,
+    title: `🚨 CRITICAL — Fund Distribution Pattern`,
+    alertId: `evm:fanout:${chain}:${fromLower}:${uniqueDests}`,
+    txHash: tx.hash,
+    wallet: tx.from,
+    walletLink: true,
+    body: [
+      `Source wallet: \`${shortAddr(tx.from)}\``,
+      `Previously received: *${fmtUSD(watched.totalReceived)}*`,
+      ``,
+      `Now distributing to *${uniqueDests} different wallets*`,
+      `Total distributed: *${fmtUSD(totalUSD)}*`,
+      `Avg per wallet: ~${fmtUSD(avgVal)}`,
+      ``,
+      `🔴 Wallet received large funds then started distributing`,
+    ].join('\n'),
+  });
+
+  watchedWallets.delete(fromLower);
+}
+
 // ── Main tx handler ──────────────────────────────────────────
 
 async function handleTx(tx, chain) {
@@ -357,6 +436,9 @@ async function handleTx(tx, chain) {
 
     const usdValue = await toUSD(BigInt(tx.value), 'ETH', 18);
     if (!usdValue || usdValue < 10_000) return;
+
+    trackReceiver(tx, usdValue);
+    checkFanOut(tx, usdValue, chain);
 
     await Promise.all([
       checkDirectTCDeposit(tx, usdValue, chain),
