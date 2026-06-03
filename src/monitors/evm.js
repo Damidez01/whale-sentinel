@@ -77,6 +77,8 @@ const CEX_RECEIVERS = new Set([
   '0xb028b84783a0381d51dcf0e8ef04b5e502958618', // Bithumb
   '0xe02cff66139fdbf60a7e05f7ce82ca657540ad6f', // Coinbase Deposit
   '0xec9fc235a8064698a2533c2d489deff4fba8226b', // Amber
+  '0x3e3a45a28e6f661776ebcd754eda1557c09f2858', // unknwon
+  '0x3154cf16ccdb4c6d922629664174b904d80f2c35', // bridge
 ]);
 
 // Known L2 bridge contracts
