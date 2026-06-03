@@ -48,9 +48,9 @@ async function main() {
     logger.warn('[Main] No ETHERSCAN_API_KEY — Chainflip monitor disabled');
   }
 
-  // ERC20 token monitor
-  startTokenMonitor();
-  modules.push('Token Monitor (USDC, USDT, DAI, WBTC)');
+  // ERC20 token monitor — disabled (too expensive on free tier)
+  // startTokenMonitor();
+  // modules.push('Token Monitor (USDC, USDT, DAI, WBTC)');
 
   modules.push(`Intelligence — ${getFlaggedCount()} wallets pre-loaded from disk`);
 
