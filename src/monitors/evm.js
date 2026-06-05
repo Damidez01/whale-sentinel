@@ -84,6 +84,25 @@ const CEX_RECEIVERS = new Set([
   '0x4c82d1fbfe28c977cbb58d8c7ff8fcf9f70a2cca', // UniswapRouter
 ]);
 
+// DEX/Swap routers — exclude from fan-out
+const SWAP_ROUTERS = new Set([
+  '0xe66b31678d6c16e9ebf358268a790b763c133750', // 0x Exchange
+  '0xba3cb449bd2b4adddbc894d8697f5170800eadec', // CoW Protocol
+  '0x9008d19f58aabd9ed0d60971565aa8510560ab41', // CoW Settlement
+  '0x7a250d5630b4cf539739df2c5dacb4c659f2488d', // Uniswap V2
+  '0xe592427a0aece92de3edee1f18e0157c05861564', // Uniswap V3
+  '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45', // Uniswap V3 R2
+  '0xef1c6e67703c7bd7107eed8303fbe6ec2554bf6b', // Uniswap Universal
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad', // Uniswap Universal R2
+  '0x0000000000004444c5dc75cb358380d2e3de08a90', // Uniswap V4
+  '0x1111111254eeb25477b68fb85ed929f73a960582', // 1inch V5
+  '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f', // SushiSwap
+  '0xdef1c0ded9bec7f1a1670819833240f027b25eff', // 0x Proxy
+  '0xba12222222228d8ba445958a75a0704d566bf2c8', // Balancer
+  '0x6131b5fae19ea4f9d964eac0408e4408b66337b5', // KyberSwap
+  '0x000000000022d473030f116ddee9f6b43ac78ba3', // Permit2
+]);
+
 // Known L2 bridge contracts
 const BRIDGES = {
   '0x99c9fc46f92e8a1c0dec1b1747d010903e884be1': 'Optimism Bridge',
