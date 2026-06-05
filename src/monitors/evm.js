@@ -84,6 +84,13 @@ const CEX_RECEIVERS = new Set([
   '0x4c82d1fbfe28c977cbb58d8c7ff8fcf9f70a2cca', // UniswapRouter
   '0x0d0707963952f2fba59dd06f2b425ace40b492fe', // Gate
   '0x963737c550e70ffe4d59464542a28604edb2ef9a', // Union
+  '0x77134cbc06cb00b66f4c7e623d5fdbf6777635ec', // Bithum
+  '0xf8191d98ae98d2f7abdfb63a9b0b812b93c873aa', // wintemrute
+  '0xaf549e4b88b031f18f814a94188ea5dcea04e1ce', // Upbit
+  '0x83e3e8c045db446203d967e092172da7185e4bd8', // Longling Capital
+  '0xba827d29682df16c6c66ab8b56747d1ad237071c', // bitinex dep
+  '0x555ce236c0220695b68341bc48c68d52210cc35b', //Debridge
+  '0x0b2fdf416cf2951499de9a1adac65c8e9907c8c2', // Binance depsoit
 ]);
 
 // DEX/Swap routers — exclude from fan-out
