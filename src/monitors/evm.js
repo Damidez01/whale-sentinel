@@ -102,7 +102,13 @@ const CEX_RECEIVERS = new Set([
   '0xbee47b0fe59286778c9bfb28196368e0f0d7beee',
   '0x46340b20830761efd32832a74d7169b29feb9758', // cryptocm
   '0x85ffcc959bd380c43a49bfd518ec141ccc1b7c35', // Bitget
-  
+  '0x45300136662dd4e58fc0df61e6290dffd992b785', // Kucoin
+  '0xf78b2eda7c1e20ff9906b31fe3612195bce9d6ce', // hifiswap
+  '0xa29e963992597b21bcdcaa969d571984869c4ff5', // B2C Group
+  '0x1157a2076b9bb22a85cc2c162f20fab3898f4101', // FalconX
+  '0xf8b2c637a68cf6a17b1df9f8992eebeff63d2dff', // Dolomite
+  '0xe67821b76985007b4cf744b0f045c8933b3e91d9', // binance deposit
+  '0x56eddb7aa87536c09ccc2793473599fd21a8b17f', // binance
 ]);
 
 // DEX/Swap routers — exclude from fan-out
