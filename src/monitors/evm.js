@@ -91,6 +91,11 @@ const CEX_RECEIVERS = new Set([
   '0xba827d29682df16c6c66ab8b56747d1ad237071c', // bitinex dep
   '0x555ce236c0220695b68341bc48c68d52210cc35b', //Debridge
   '0x0b2fdf416cf2951499de9a1adac65c8e9907c8c2', // Binance depsoit
+  '0x2ef53f8826b4145c98f564586d2ae67b17cb5b97', // deposit
+  '0xd59d7a9698eff3e68e0af7e803d4ed35e7ed12d2', // bullish
+  '0x2ef53f8826b4145c98f564586d2ae67b17cb5b97', // Upbit deposit
+  '0x95ae79a2a8e49cf86ffebae0df694d8bb7c1ab80', // hyperunit
+  '0xd2674da94285660c9b2353131bef2d8211369a4b', // Binance
 ]);
 
 // DEX/Swap routers — exclude from fan-out
