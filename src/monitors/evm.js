@@ -82,6 +82,8 @@ const CEX_RECEIVERS = new Set([
   '0x0e58e8993100f1cbe45376c410f97f4893d9bfcd', // Upbit
   '0x49048044d57e1c92a77f79988d21fa8faf74e97e', // Base Bridge
   '0x4c82d1fbfe28c977cbb58d8c7ff8fcf9f70a2cca', // UniswapRouter
+  '0x0d0707963952f2fba59dd06f2b425ace40b492fe', // Gate
+  '0x963737c550e70ffe4d59464542a28604edb2ef9a', // Union
 ]);
 
 // DEX/Swap routers — exclude from fan-out
