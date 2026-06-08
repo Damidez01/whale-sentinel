@@ -78,6 +78,8 @@ async function processTx(tx) {
       : { emoji: '📥', label: 'ETH IN (ETH→BTC deposit)',      wallet: tx.from };
 
     logger.alert(`[CF] ${direction.label} | ${ethAmount.toFixed(2)} ETH (${fmtUSD(usdValue)}) | ${direction.wallet?.slice(0,10)}...`);
+    
+    logger.info(`[CF] Processing tx: hash=${tx.hash?.slice(0,10)} value=${tx.value} to=${tx.to?.slice(0,10)} from=${tx.from?.slice(0,10)}`);
 
     // ── Burst detection ──
     const burstKey   = `cf:burst:${direction.wallet?.toLowerCase()}`;

@@ -114,6 +114,11 @@ const CEX_RECEIVERS = new Set([
   '0x4976a4a02f38326660d17bf34b431dc6e2eb2327', // Binance Hot wallet
   '0xe01fd113494f36805618fb3c7bb930e4a8e70f60', // OKX Deposit
   '0x974caa59e49682cda0ad2bbe82983419a2ecc400', // Stake
+  '0x9c19b0497997fe9e75862688a295168070456951', // Coincheck
+  '0x9696f59e4d72e237be84ffd425dcad154bf96976', // Binance
+  '0xc17a40852e4bfe04bc81af355fdf132c539ba753', // Binance Deposit
+  '0xb0af00ff84755e9093472814492f32f42a8613ea', // Bullish
+  '0xf89d7b9c864f589bbf53a82105107622b35eaa40', // Bybit
 ]);
 
 // DEX/Swap routers — exclude from fan-out
