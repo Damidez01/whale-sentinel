@@ -58,9 +58,7 @@ async function processTx(tx) {
     // Dedup
     if (getKey(`cf:tx:${tx.hash}`)) return;
     setKey(`cf:tx:${tx.hash}`, '1', 3600);
-
-     logger.info(`[CF] Processing tx: hash=${tx.hash?.slice(0,10)} value=${tx.value} to=${tx.to?.slice(0,10)} from=${tx.from?.slice(0,10)}`);
-
+    
     const ethPrice = await getPrice('ETH');
     if (!ethPrice) return;
 
