@@ -16,13 +16,14 @@ const POLL_MS        = 30_000; // 30 seconds
 
 async function fetchVaultTxs() {
   try {
-    const base = 'https://api.etherscan.io/api';
+    const base = 'https://api.etherscan.io/v2/api';
     const params = {
       address:  VAULT,
       sort:     'desc',
       page:     1,
       offset:   20,
       apikey:   ETHERSCAN_KEY,
+      chainid:  1,
     };
 
     // Fetch both normal txns AND internal txns in parallel
