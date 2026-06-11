@@ -57,7 +57,7 @@ async function processTx(tx) {
   try {
     // Dedup
     if (getKey(`cf:tx:${tx.hash}`)) return;
-    setKey(`cf:tx:${tx.hash}`, '1', 3600);
+    setKey(`cf:tx:${tx.hash}`, '1', 86400);
     
     const ethPrice = await getPrice('ETH');
     if (!ethPrice) return;

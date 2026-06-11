@@ -119,6 +119,9 @@ const CEX_RECEIVERS = new Set([
   '0xc17a40852e4bfe04bc81af355fdf132c539ba753', // Binance Deposit
   '0xb0af00ff84755e9093472814492f32f42a8613ea', // Bullish
   '0xf89d7b9c864f589bbf53a82105107622b35eaa40', // Bybit
+  '0xae8cbb7e810f59fd0dd939b2b6623756d91b174a', // Near intent deposit
+  '0xb897969305a508d7dd00e4b8218827c6742c0635', // Proxy
+  '0x2dcbc69ca4d13c232f39fc65d1aa568567c1c1c3', // Bitcoin Suisse
 ]);
 
 // DEX/Swap routers — exclude from fan-out
