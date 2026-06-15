@@ -124,6 +124,12 @@ const CEX_RECEIVERS = new Set([
   '0xae8cbb7e810f59fd0dd939b2b6623756d91b174a', // Near Intent Deposit
   '0xb897969305a508d7dd00e4b8218827c6742c0635', // Proxy
   '0x2dcbc69ca4d13c232f39fc65d1aa568567c1c1c3', // Bitcoin Suisse
+  '0x1bae874af9f81b8f93315b27f080260da4702d3a', // Derbit
+  '0xc94ebb328ac25b95db0e0aa968371885fa516215', // Roobet
+  '0xf51710015536957a01f32558402902a2d9c35d82', // gemini
+  '0x9fedf67538d0e0b9093efef2124eca8bb6932722', // GMO
+  '0x9642b23ed1e01df1092b92641051881a322f5d4e', // MEXC
+  '0x6e8f6f1d3e85b143ccb306acb4ef60b3377154c9', // bitcoin Suisse
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
@@ -162,6 +168,7 @@ const KNOWN_FUNDING_SOURCES = new Set([
   '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae', // LiFi
   '0x1a0ad011913a150f69f6a19df447a0cfd9551054', // Scroll Bridge
   '0xe4edb277e41dc89ab076a1f049f4a3efa700bce8', // Orbiter Finance
+
 ]);
 
 // ── No-KYC swap hot wallets — amplify fan-out alerts ─────────
@@ -173,7 +180,7 @@ const NOKYC_SWAPS = new Map([
   ['0x175d0dc7783b50899d4d3d58b68fd3ab0571dbc2', 'SimpleSwap'],
   ['0x19a7f4b33b7e453374eb82a56c2de3bfc81e2e56', 'eXch'],
   ['0xf1da173228fcf015f43f3ea15abbb51f0d8f1123', 'StealthEX'],
-  ['0xd3e9d60a3b60ea82a4a3d2a789a2c38c31e08572', 'LetsExchange'],
+  ['0xeba88149813bec1cccccfdb0dacefaaa5de94cb1', 'ChangeNow'],
 ]);
 
 // ── L2 bridge contracts (for flagged wallet bridge exit) ─────
