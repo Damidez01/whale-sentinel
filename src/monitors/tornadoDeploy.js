@@ -236,10 +236,11 @@ async function handleWithdrawalLog(log) {
     if (getKey(`tcd:tx:${txHash}`)) return;
     setKey(`tcd:tx:${txHash}`, '1', 3600);
 
-    // Decode recipient — topics[1] is padded address
-    const recipientRaw = log.topics?.[1];
-    if (!recipientRaw) return;
-    const recipient = '0x' + recipientRaw.slice(26).toLowerCase();
+    // Decode recipient from data field (not indexed, so not in topics)
+    // data layout: [to (32 bytes)][nullifierHash (32 bytes)][fee (32 bytes)]
+    // topics[1] is the relayer (indexed) — not what we want
+    if (!log.data || log.data.length < 66) return;
+    const recipient = '0x' + log.data.slice(26, 66).toLowerCase();
 
     markSeen(recipient);
 

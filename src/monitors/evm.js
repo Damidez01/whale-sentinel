@@ -130,6 +130,8 @@ const CEX_RECEIVERS = new Set([
   '0x9fedf67538d0e0b9093efef2124eca8bb6932722', // GMO
   '0x9642b23ed1e01df1092b92641051881a322f5d4e', // MEXC
   '0x6e8f6f1d3e85b143ccb306acb4ef60b3377154c9', // bitcoin Suisse
+  '0x240543929693333da0946cbf2597c099e4daa7cf', // Coinbase
+  '0x71055a0bc1da5c174d074cd5b86a3ea1eba588fe', // pig buc
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
