@@ -132,6 +132,14 @@ const CEX_RECEIVERS = new Set([
   '0x6e8f6f1d3e85b143ccb306acb4ef60b3377154c9', // bitcoin Suisse
   '0x240543929693333da0946cbf2597c099e4daa7cf', // Coinbase
   '0x71055a0bc1da5c174d074cd5b86a3ea1eba588fe', // pig buc
+  '0xd886e890c05bec13a3164891a6227e2f25f1f0e7', // B2C GROUP
+  '0xc333e80ef2dec2805f239e3f1e810612d294f771', // B2C GROUP
+  '0x841ed663f2636863d40be4ee76243377dff13a34', // Robinhood
+  '0xcd531ae9efcce479654c4926dec5f6209531ca7b', // Coinbase
+  '0x33a64dcdfa041befebc9161a3e0c6180cd94fa89', // Coinspot
+  '0xeb6c4be4b92a52e969f4bf405025d997703d5383', // Bitbank
+  '0x7f604d597c15b2e2f60dc645844f68b1d781b752', // Bitstamp
+  '0xef317e433b0836f294866d43f67d6871b609b351', // Bingx
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────

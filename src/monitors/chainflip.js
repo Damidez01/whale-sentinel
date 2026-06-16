@@ -73,13 +73,22 @@ async function fetchVaultTxs() {
 
 async function processTx(tx) {
   try {
-    // Block cursor dedup — skip anything we've already processed
-    if (Number(tx.blockNumber) <= lastSeenBlock) return;
-
-    // Hash+direction dedup as a safety net (7-day TTL — no TTL expiry re-alerts)
     const isInflow  = tx.to?.toLowerCase()   === VAULT;
     const isOutflow = tx.from?.toLowerCase() === VAULT;
-    if (!isInflow && !isOutflow) return;
+
+    // DEBUG
+    logger.info(`[CF:DEBUG] tx ${tx.hash?.slice(0,10)} block=${tx.blockNumber} from=${tx.from?.slice(0,10)} to=${tx.to?.slice(0,10)} value=${Number(tx.value)/1e18} ETH isInflow=${isInflow} isOutflow=${isOutflow} lastSeenBlock=${lastSeenBlock}`);
+
+    // Block cursor dedup — skip anything we've already processed
+    if (Number(tx.blockNumber) <= lastSeenBlock) {
+      logger.info(`[CF:DEBUG] SKIPPED — block ${tx.blockNumber} <= lastSeenBlock ${lastSeenBlock}`);
+      return;
+    }
+
+    if (!isInflow && !isOutflow) {
+      logger.info(`[CF:DEBUG] SKIPPED — neither inflow nor outflow`);
+      return;
+    }
 
     const direction = isOutflow
       ? { emoji: '📤', label: 'ETH OUT (BTC→ETH swap egress)', wallet: tx.to   }
