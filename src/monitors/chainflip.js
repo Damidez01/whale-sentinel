@@ -37,35 +37,34 @@ function advanceCursor(blockNumber) {
 async function fetchVaultTxs() {
   try {
     const base   = 'https://api.etherscan.io/v2/api';
-    const params = {
-      address: VAULT,
-      sort:    'desc',
-      page:    1,
-      offset:  20,
-      apikey:  ETHERSCAN_KEY,
-      chainid: 1,
+    const common = {
+      address:    VAULT,
+      sort:       'asc',
+      startblock: lastSeenBlock + 1,
+      endblock:   99999999,
+      page:       1,
+      offset:     50,
+      apikey:     ETHERSCAN_KEY,
+      chainid:    1,
     };
 
     const [r1, r2] = await Promise.all([
-      axios.get(base, { params: { ...params, module: 'account', action: 'txlist'         }, timeout: 10_000 }),
-      axios.get(base, { params: { ...params, module: 'account', action: 'txlistinternal' }, timeout: 10_000 }),
+      // txlist — ETH inflows (user sends ETH directly to vault)
+      axios.get(base, { params: { ...common, module: 'account', action: 'txlist'         }, timeout: 10_000 }),
+      // txlistinternal — ETH outflows (vault sends ETH to recipient via internal call)
+      axios.get(base, { params: { ...common, module: 'account', action: 'txlistinternal' }, timeout: 10_000 }),
     ]);
 
-    const normal   = (r1.data?.status === '1' ? r1.data.result : []) || [];
-    const internal = (r2.data?.status === '1' ? r2.data.result : []) || [];
+    // Process separately — do NOT merge
+    // txlist gives us parent tx (inflows), txlistinternal gives us internal calls (outflows)
+    // Merging by hash causes the parent tx to overwrite the internal record, losing outflow data
+    const inflows  = (r1.data?.status === '1' ? r1.data.result : []) || [];
+    const outflows = (r2.data?.status === '1' ? r2.data.result : []) || [];
 
-    // Merge — deduplicate by hash+traceId
-    const seen = new Set();
-    const all  = [];
-    for (const tx of [...normal, ...internal]) {
-      const key = tx.hash + (tx.traceId || '');
-      if (!seen.has(key)) { seen.add(key); all.push(tx); }
-    }
-
-    return all;
+    return { inflows, outflows };
   } catch (err) {
     logger.error('[CF] Etherscan fetch failed', { error: err.message });
-    return [];
+    return { inflows: [], outflows: [] };
   }
 }
 
@@ -76,30 +75,17 @@ async function processTx(tx) {
     const isInflow  = tx.to?.toLowerCase()   === VAULT;
     const isOutflow = tx.from?.toLowerCase() === VAULT;
 
-    // DEBUG
-    logger.info(`[CF:DEBUG] tx ${tx.hash?.slice(0,10)} block=${tx.blockNumber} from=${tx.from?.slice(0,10)} to=${tx.to?.slice(0,10)} value=${Number(tx.value)/1e18} ETH isInflow=${isInflow} isOutflow=${isOutflow} lastSeenBlock=${lastSeenBlock}`);
-
-    // Block cursor dedup — skip anything we've already processed
-    if (Number(tx.blockNumber) <= lastSeenBlock) {
-      logger.info(`[CF:DEBUG] SKIPPED — block ${tx.blockNumber} <= lastSeenBlock ${lastSeenBlock}`);
+    // Dedup — 7-day TTL so restarts never re-alert
+    const dedupKey = `cf:tx:${tx.hash}:${isInflow ? 'in' : 'out'}`;
+    if (getKey(dedupKey)) {
+      advanceCursor(tx.blockNumber);
       return;
     }
-
-    if (!isInflow && !isOutflow) {
-      logger.info(`[CF:DEBUG] SKIPPED — neither inflow nor outflow`);
-      return;
-    }
+    setKey(dedupKey, '1', 86400 * 7);
 
     const direction = isOutflow
       ? { emoji: '📤', label: 'ETH OUT (BTC→ETH swap egress)', wallet: tx.to   }
       : { emoji: '📥', label: 'ETH IN (ETH→BTC deposit)',      wallet: tx.from };
-
-    const dedupKey = `cf:tx:${tx.hash}:${isInflow ? 'in' : 'out'}`;
-    if (getKey(dedupKey)) {
-      advanceCursor(tx.blockNumber); // still advance cursor even if deduped
-      return;
-    }
-    setKey(dedupKey, '1', 86400 * 7);
 
     const ethPrice = await getPrice('ETH');
     if (!ethPrice) return;
@@ -110,7 +96,7 @@ async function processTx(tx) {
     const usdValue = ethAmount * ethPrice;
     if (usdValue < MIN_USD) { advanceCursor(tx.blockNumber); return; }
 
-    logger.alert(`[CF] ${direction.label} | ${ethAmount.toFixed(2)} ETH (${fmtUSD(usdValue)}) | ${direction.wallet?.slice(0, 10)}...`);
+    logger.alert(`[CF] ${direction.label} | ${ethAmount.toFixed(2)} ETH ($${(usdValue/1000).toFixed(0)}K) | ${direction.wallet?.slice(0, 10)}...`);
 
     // ── Burst detection ──────────────────────────────────────
     const burstKey   = `cf:burst:${direction.wallet?.toLowerCase()}`;
@@ -139,7 +125,6 @@ async function processTx(tx) {
         ].join('\n'),
       });
     } else {
-      // ── Single large tx ──────────────────────────────────────
       sendAlert({
         chain: 'ETH',
         title: `🟠 HIGH — Chainflip Vault ${isOutflow ? 'Egress' : 'Deposit'}`,
@@ -168,17 +153,25 @@ async function processTx(tx) {
   }
 }
 
+
 // ── Poll loop ─────────────────────────────────────────────────
 
 async function poll() {
-  const txs = await fetchVaultTxs();
+  const { inflows, outflows } = await fetchVaultTxs();
 
-  // Sort ascending — process oldest first so cursor advances correctly
-  const newTxs = txs
-    .filter(tx => Number(tx.blockNumber) > lastSeenBlock)
+  // Process inflows (txlist) — ETH sent TO vault
+  // Filter: only where vault is the recipient and value > 0
+  const newInflows = inflows
+    .filter(tx => tx.to?.toLowerCase() === VAULT && Number(tx.value) > 0)
     .sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber));
 
-  for (const tx of newTxs) {
+  // Process outflows (txlistinternal) — ETH sent FROM vault to recipient
+  // Filter: only where vault is the sender and value > 0
+  const newOutflows = outflows
+    .filter(tx => tx.from?.toLowerCase() === VAULT && Number(tx.value) > 0)
+    .sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber));
+
+  for (const tx of [...newInflows, ...newOutflows].sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber))) {
     await processTx(tx);
   }
 }
