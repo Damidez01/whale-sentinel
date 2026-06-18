@@ -140,6 +140,7 @@ const CEX_RECEIVERS = new Set([
   '0xeb6c4be4b92a52e969f4bf405025d997703d5383', // Bitbank
   '0x7f604d597c15b2e2f60dc645844f68b1d781b752', // Bitstamp
   '0xef317e433b0836f294866d43f67d6871b609b351', // Bingx
+  '0x12ef5e054878b225fe3d36e5aa96a3ba41eac385' // upbit
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
