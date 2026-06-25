@@ -142,6 +142,12 @@ const CEX_RECEIVERS = new Set([
   '0xef317e433b0836f294866d43f67d6871b609b351', // Bingx
   '0x12ef5e054878b225fe3d36e5aa96a3ba41eac385', // upbit
   '0xf70da97812cb96acdf810712aa562db8dfa3dbef', // Relay Protocol
+  '0xffe15ff598e719d29dfe5e1d60be1a5521a779ae', // HashKey
+  '0x86e284421664840cb65c5b918da59c01ed8fa666', // GMO
+  '0x17b66efe8b2ba8366e1047cbe72225f4d117a5ff', // GMO
+  '0xd0d08887e8a5b16049534a7f3fc1de92848f5bea', // Coinbase
+  '0x14e51143b3a5de4b4ec392680010e170c458ecc8', // flowtrade
+  '0xfd65235129debccfdbdcfdf8aa96d3e125ec9d10', // nne
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
