@@ -148,6 +148,8 @@ const CEX_RECEIVERS = new Set([
   '0xd0d08887e8a5b16049534a7f3fc1de92848f5bea', // Coinbase
   '0x14e51143b3a5de4b4ec392680010e170c458ecc8', // flowtrade
   '0xfd65235129debccfdbdcfdf8aa96d3e125ec9d10', // nne
+  '0xbdb3ba9ffe392549e1f8658dd2630c141fdf47b6', // none
+  '0x05cdb1526f6e224e02919a4c018d9784ea25eb3d', // VALR 
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────

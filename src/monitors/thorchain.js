@@ -5,7 +5,7 @@ const { sendAlert } = require('../alerts/telegram');
 const { getPrice, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 
-const MIDGARD       = process.env.THORCHAIN_MIDGARD        || 'https://midgard.ninerealms.com/v2';
+const MIDGARD       = process.env.THORCHAIN_MIDGARD         || 'https://midgard.ninerealms.com/v2';
 const MIN_USD       = Number(process.env.THORCHAIN_MIN_SWAP_USD     || 500_000);
 const BURST_COUNT   = Number(process.env.THORCHAIN_BURST_COUNT      || 3);
 const BURST_WIN_MIN = Number(process.env.THORCHAIN_BURST_WINDOW_MIN || 30);
@@ -13,6 +13,19 @@ const POLL_MS       = 15_000;
 
 const ETH_ASSETS    = new Set(['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'WBTC']);
 const STABLE_ASSETS = new Set(['USDC', 'USDT', 'DAI']);
+
+// ── Cursor — persisted so restarts don't re-alert ────────────
+let lastSeenTxId = null;
+
+function restoreCursor() {
+  const saved = getKey('thor:lastTxId');
+  if (saved) {
+    lastSeenTxId = saved;
+    logger.info(`[THOR] Resuming from txId ${saved.slice(0, 10)}...`);
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────
 
 function parseAsset(raw) {
   if (!raw) return null;
@@ -32,6 +45,8 @@ function directionLabel(direction) {
   return { emoji: '🔵', label: 'Swap' };
 }
 
+// ── Fetch ────────────────────────────────────────────────────
+
 async function fetchSwaps() {
   try {
     const { data } = await axios.get(`${MIDGARD}/actions`, {
@@ -45,15 +60,17 @@ async function fetchSwaps() {
   }
 }
 
+// ── Process ──────────────────────────────────────────────────
+
 async function processSwap(swap) {
   try {
     const txId   = swap.in?.[0]?.txID;
     const status = swap.status;
     if (!txId || status !== 'success') return;
 
-    // Dedup
-    if (getKey(`thor:${txId}`)) return;
-    setKey(`thor:${txId}`, '1', 3600);
+    // Dedup — 7-day TTL so restarts never re-alert
+    if (getKey(`thor:tx:${txId}`)) return;
+    setKey(`thor:tx:${txId}`, '1', 86400 * 7);
 
     const inCoin  = swap.in?.[0]?.coins?.[0];
     const outCoin = swap.out?.[0]?.coins?.[0];
@@ -69,21 +86,18 @@ async function processSwap(swap) {
     const fromAddr  = swap.in?.[0]?.address;
     const toAddr    = swap.out?.[0]?.address;
 
-    // USD value
     const inPrice  = await getPrice(STABLE_ASSETS.has(inAsset) ? null : inAsset) || 1;
     const usdValue = STABLE_ASSETS.has(inAsset) ? inAmount : inAmount * inPrice;
-
     if (usdValue < MIN_USD) return;
 
     const { emoji, label } = directionLabel(direction);
 
-    // ── Burst detection: track ALL large swaps per wallet ──
-    // Use fromAddr for ETH→BTC, toAddr for BTC→ETH (receiving wallet)
+    // Burst detection — track per wallet
     const trackAddr  = direction === 'ETH_TO_BTC' ? fromAddr : toAddr;
     const burstKey   = `thor:burst:${trackAddr}`;
     const burstCount = windowAdd(burstKey, usdValue, BURST_WIN_MIN * 60);
 
-    logger.alert(`[THOR] ${direction} | ${inAmount.toFixed(2)} ${inAsset} → ${outAmount.toFixed(4)} ${outAsset} | ${fmtUSD(usdValue)} | wallet burst: ${burstCount}`);
+    logger.alert(`[THOR] ${direction} | ${inAmount.toFixed(2)} ${inAsset} → ${outAmount.toFixed(4)} ${outAsset} | ${fmtUSD(usdValue)} | burst: ${burstCount}`);
 
     if (burstCount >= BURST_COUNT) {
       const allSwaps = windowGet(burstKey, BURST_WIN_MIN * 60);
@@ -107,10 +121,9 @@ async function processSwap(swap) {
           `🔗 [View on THORChain](https://thorchain.net/tx/${txId})`,
         ].join('\n'),
       });
-      return; // don't double-alert with single swap alert
+      return;
     }
 
-    // ── Single large swap ──
     sendAlert({
       chain: 'THOR',
       title: `🟠 HIGH — THORChain Large Swap`,
@@ -134,16 +147,35 @@ async function processSwap(swap) {
   }
 }
 
+// ── Poll loop ─────────────────────────────────────────────────
+
 async function poll() {
   const swaps = await fetchSwaps();
-  for (const swap of swaps) {
+  if (!swaps.length) return;
+
+  // Find where we left off — only process swaps newer than lastSeenTxId
+  const lastIdx  = swaps.findIndex(s => s.in?.[0]?.txID === lastSeenTxId);
+  const newSwaps = lastIdx === -1 ? swaps : swaps.slice(0, lastIdx);
+
+  if (!newSwaps.length) return;
+
+  // Process oldest first so cursor advances correctly
+  for (const swap of newSwaps.reverse()) {
     await processSwap(swap);
+    const txId = swap.in?.[0]?.txID;
+    if (txId) {
+      lastSeenTxId = txId;
+      setKey('thor:lastTxId', txId, 86400 * 30);
+    }
   }
 }
 
+// ── Entry point ──────────────────────────────────────────────
+
 function startTHORChainMonitor() {
+  restoreCursor();
   logger.info('[THOR] THORChain monitor starting — polling every 15s');
-  logger.info(`[THOR] Watching: ETH/stables ↔ BTC | Min: ${fmtUSD(MIN_USD)} | Burst: ${BURST_COUNT}x in ${BURST_WIN_MIN}min`);
+  logger.info(`[THOR] Midgard: ${MIDGARD} | Min: ${fmtUSD(MIN_USD)} | Burst: ${BURST_COUNT}x in ${BURST_WIN_MIN}min`);
   poll();
   setInterval(poll, POLL_MS);
 }
