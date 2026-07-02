@@ -150,6 +150,8 @@ const CEX_RECEIVERS = new Set([
   '0xfd65235129debccfdbdcfdf8aa96d3e125ec9d10', // nne
   '0xbdb3ba9ffe392549e1f8658dd2630c141fdf47b6', // none
   '0x05cdb1526f6e224e02919a4c018d9784ea25eb3d', // VALR 
+  '0x6872b6630a3afcd3117191a8403c2002e13df7de', // Stake
+  '0x255da6ef3fba4aca78288a0241d1c1e934f0f530', // Upbit
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
