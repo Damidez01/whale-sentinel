@@ -9,7 +9,7 @@ const MIDGARD       = process.env.THORCHAIN_MIDGARD         || 'https://midgard.
 const MIN_USD       = Number(process.env.THORCHAIN_MIN_SWAP_USD     || 500_000);
 const BURST_COUNT   = Number(process.env.THORCHAIN_BURST_COUNT      || 3);
 const BURST_WIN_MIN = Number(process.env.THORCHAIN_BURST_WINDOW_MIN || 30);
-const POLL_MS       = 15_000;
+const POLL_MS       = 60_000;
 
 const ETH_ASSETS = new Set(['ETH', 'WETH']);
 
