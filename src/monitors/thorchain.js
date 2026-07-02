@@ -11,8 +11,7 @@ const BURST_COUNT   = Number(process.env.THORCHAIN_BURST_COUNT      || 3);
 const BURST_WIN_MIN = Number(process.env.THORCHAIN_BURST_WINDOW_MIN || 30);
 const POLL_MS       = 15_000;
 
-const ETH_ASSETS    = new Set(['ETH', 'USDC', 'USDT', 'DAI', 'WETH', 'WBTC']);
-const STABLE_ASSETS = new Set(['USDC', 'USDT', 'DAI']);
+const ETH_ASSETS = new Set(['ETH', 'WETH']);
 
 // ── Cursor — persisted so restarts don't re-alert ────────────
 let lastSeenTxId = null;
@@ -86,8 +85,8 @@ async function processSwap(swap) {
     const fromAddr  = swap.in?.[0]?.address;
     const toAddr    = swap.out?.[0]?.address;
 
-    const inPrice  = await getPrice(STABLE_ASSETS.has(inAsset) ? null : inAsset) || 1;
-    const usdValue = STABLE_ASSETS.has(inAsset) ? inAmount : inAmount * inPrice;
+    const inPrice  = await getPrice(inAsset) || 1;
+    const usdValue = inAmount * inPrice;
     if (usdValue < MIN_USD) return;
 
     const { emoji, label } = directionLabel(direction);
