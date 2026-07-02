@@ -51,6 +51,10 @@ async function fetchSwaps() {
     const { data } = await axios.get(`${MIDGARD}/actions`, {
       params: { type: 'swap', limit: 50 },
       timeout: 10_000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ChainHound/2.0)',
+        'Accept': 'application/json',
+      },
     });
     return data?.actions || [];
   } catch (err) {
