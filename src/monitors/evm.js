@@ -152,6 +152,11 @@ const CEX_RECEIVERS = new Set([
   '0x05cdb1526f6e224e02919a4c018d9784ea25eb3d', // VALR 
   '0x6872b6630a3afcd3117191a8403c2002e13df7de', // Stake
   '0x255da6ef3fba4aca78288a0241d1c1e934f0f530', // Upbit
+  '0x1186fcb478586338d86e116db853e2a8079745d3', // Coinbase prime
+  '0x27da5fa6520c04ee3566e9d749996a5c3ad326e3', // 
+  '0x3b6345239a23374083d27db89742a79c161c8bdd', // 
+  '0x2c1289b95b8c4bcef9a09730b42967bc74f8996d', //
+  '0xb4a61bd27667dfd6798b9108322ccc3b2aeb86a4'
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
