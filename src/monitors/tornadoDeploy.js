@@ -43,7 +43,7 @@ const TC_POOLS = {
 // never hop-propagated, never alerted on. Just paste the address (any
 // case) and a short reason, then restart the process to pick it up.
 const EXCLUDED_WALLETS = {
-   '0x30a3ab897ae2b84d7bbee270b7ffa7091a195d10'    
+  '0x30a3ab897ae2b84d7bbee270b7ffa7091a195d10': 'tracking manually',
 };
 
 // Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)
