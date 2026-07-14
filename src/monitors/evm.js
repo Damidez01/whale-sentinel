@@ -156,7 +156,9 @@ const CEX_RECEIVERS = new Set([
   '0x27da5fa6520c04ee3566e9d749996a5c3ad326e3', // 
   '0x3b6345239a23374083d27db89742a79c161c8bdd', // 
   '0x2c1289b95b8c4bcef9a09730b42967bc74f8996d', //
-  '0xb4a61bd27667dfd6798b9108322ccc3b2aeb86a4'
+  '0xb4a61bd27667dfd6798b9108322ccc3b2aeb86a4', //
+  '0x818570b628809140c3d1fdde811ef3b91dfd4482', // bybit deposit
+  '0x93228d328c9c74c2bfe9f97638bbb5ef322f2bd5', // Bybit
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────

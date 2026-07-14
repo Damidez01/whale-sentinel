@@ -38,6 +38,14 @@ const TC_POOLS = {
   '0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc': '0.1 ETH',
 };
 
+// ── Excluded wallets ─────────────────────────────────────────
+// Wallets you're tracking manually / already know about — never watched,
+// never hop-propagated, never alerted on. Just paste the address (any
+// case) and a short reason, then restart the process to pick it up.
+const EXCLUDED_WALLETS = {
+   '0x30a3ab897ae2b84d7bbee270b7ffa7091a195d10'    
+};
+
 // Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)
 const WITHDRAWAL_TOPIC = '0xe9e508bad6d4c3227e881ca19068f099da81b5164dd6d62b2eaf1e8bc6c34931';
 
@@ -73,6 +81,58 @@ function isFreshWallet(addr) {
 function markSeen(addr) {
   const key = `tcd:seen:${addr.toLowerCase()}`;
   if (!getKey(key)) setKey(key, Date.now().toString(), 86400 * 7);
+}
+
+// ── Wallet exclude list (CEX hot wallets, known false positives) ──
+// Persisted as a single JSON array under one key. Use excludeWallet()/
+// unexcludeWallet() (exported below) to manage it from a Telegram
+// command or CLI, e.g. `!tcd-exclude 0xabc... "Binance hot wallet"`.
+
+const EXCLUDE_LIST_KEY = 'tcd:excluded_wallets';
+
+function loadExcludedWallets() {
+  const raw = getKey(EXCLUDE_LIST_KEY);
+  if (!raw) return new Map();
+  try {
+    const arr = JSON.parse(raw); // [[addr, reason], ...]
+    return new Map(arr);
+  } catch {
+    return new Map();
+  }
+}
+
+function saveExcludedWallets(map) {
+  setKey(EXCLUDE_LIST_KEY, JSON.stringify([...map.entries()]));
+}
+
+function isExcludedWallet(addr) {
+  if (!addr) return false;
+  const lower = addr.toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(EXCLUDED_WALLETS, lower)) return true;
+  return loadExcludedWallets().has(lower);
+}
+
+function excludeWallet(addr, reason = '') {
+  if (!addr) return;
+  const lower = addr.toLowerCase();
+  const excluded = loadExcludedWallets();
+  excluded.set(lower, reason);
+  saveExcludedWallets(excluded);
+  watchedWithdrawals.delete(lower); // stop tracking it immediately
+  logger.info(`[TC-DEPLOY] Excluded wallet ${shortAddr(lower)}${reason ? ` — ${reason}` : ''}`);
+}
+
+function unexcludeWallet(addr) {
+  if (!addr) return;
+  const lower = addr.toLowerCase();
+  const excluded = loadExcludedWallets();
+  excluded.delete(lower);
+  saveExcludedWallets(excluded);
+  logger.info(`[TC-DEPLOY] Un-excluded wallet ${shortAddr(lower)}`);
+}
+
+function listExcludedWallets() {
+  return [...loadExcludedWallets().entries()]; // [[addr, reason], ...]
 }
 
 // ── Scoring ──────────────────────────────────────────────────
@@ -193,6 +253,8 @@ function checkHopTransfer(tx) {
   const entry = watchedWithdrawals.get(fromLower);
   if (!entry || entry.hop !== 0) return; // only propagate one hop
 
+  if (isExcludedWallet(fromLower) || isExcludedWallet(toLower)) return; // known/excluded wallet
+
   if (watchedWithdrawals.has(toLower)) return; // already tracking
 
   markSeen(toLower);
@@ -220,6 +282,12 @@ async function checkDeployment(tx, receipt, chain) {
   const entry = watchedWithdrawals.get(deployerAddr);
   if (!entry) return;
 
+  if (isExcludedWallet(deployerAddr)) {
+    logger.info(`[TC-DEPLOY] Suppressed — ${shortAddr(deployerAddr)} deployed ${shortAddr(contractAddr)} on ${chain} (excluded wallet)`);
+    watchedWithdrawals.delete(deployerAddr);
+    return;
+  }
+
   await onContractDeployed(deployerAddr, contractAddr, tx.hash, entry, chain);
   watchedWithdrawals.delete(deployerAddr);
 }
@@ -241,6 +309,11 @@ async function handleWithdrawalLog(log) {
     // topics[1] is the relayer (indexed) — not what we want
     if (!log.data || log.data.length < 66) return;
     const recipient = '0x' + log.data.slice(26, 66).toLowerCase();
+
+    if (isExcludedWallet(recipient)) {
+      logger.info(`[TC-DEPLOY] Skipping watch — ${shortAddr(recipient)} is excluded`);
+      return;
+    }
 
     markSeen(recipient);
 
@@ -323,4 +396,8 @@ module.exports = {
   confirmTokenContract,
   checkHopTransfer,
   getWatchedWithdrawals: () => watchedWithdrawals,
+  excludeWallet,
+  unexcludeWallet,
+  isExcludedWallet,
+  listExcludedWallets,
 };
