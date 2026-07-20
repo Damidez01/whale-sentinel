@@ -35,7 +35,7 @@ async function main() {
   }
 
   // THORChain
- startTHORChainMonitor();
+// startTHORChainMonitor();
  modules.push('THORChain (ETH/stables ↔ BTC)');
 
   // EVM chains
