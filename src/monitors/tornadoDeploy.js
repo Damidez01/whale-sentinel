@@ -46,6 +46,7 @@ const EXCLUDED_WALLETS = {
   '0x30a3ab897ae2b84d7bbee270b7ffa7091a195d10': 'tracking manually',
   '0x9b82607c248389b6a40a060debe7bacd03cef06f': 'track manually',
   '0x964926d88560ea850fb2b350335c920a49619dfa': 'tracking manually',
+  '0x8b0308454e69e9f4a68e325f6dd2c1f8cf7dab63': 'tracking manually'
 };
 
 // Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)
