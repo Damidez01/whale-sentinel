@@ -1,7 +1,7 @@
 require('dotenv').config();
 
-//const { startTornadoMonitor }  = require('./monitors/tornado');
-//const { startTornadoDeployMonitor } = require('./monitors/tornadoDeploy');
+const { startTornadoMonitor }  = require('./monitors/tornado');
+const { startTornadoDeployMonitor } = require('./monitors/tornadoDeploy');
 const { startTHORChainMonitor } = require('./monitors/thorchain');
 const { startEVMMonitor }       = require('./monitors/evm');
 const { startChainflipMonitor } = require('./monitors/chainflip');
@@ -27,8 +27,8 @@ async function main() {
 
   // Tornado Cash (ETH mainnet only)
   if (process.env.ALCHEMY_ETH_WSS && !process.env.ALCHEMY_ETH_WSS.includes('YOUR_KEY')) {
-    // startTornadoMonitor();
-    // startTornadoDeployMonitor();
+    startTornadoMonitor();
+    startTornadoDeployMonitor();
     modules.push('Tornado Cash (100 ETH + 10 ETH pools + deploy watcher)');
   } else {
     logger.warn('[Main] ETH WSS not set — Tornado Cash monitor disabled');

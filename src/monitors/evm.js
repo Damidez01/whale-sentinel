@@ -160,6 +160,10 @@ const CEX_RECEIVERS = new Set([
   '0x818570b628809140c3d1fdde811ef3b91dfd4482', // bybit deposit
   '0x93228d328c9c74c2bfe9f97638bbb5ef322f2bd5', // Bybit
   '0xc0ffeebabe5d496b2dde509f9fa189c25cf29671', // mev
+  '0x9bdcde4ae9aa06e1f8ee153735f232b666d5c877', // OSL
+  '0xd2dd7b597fd2435b6db61ddf48544fd931e6869f', // kRAKEN
+  '0x3cdf67e6910c7a06c850082ee7d0d7c4e8fb8836', // kucoin
+  '0x3cdf67e6910c7a06c850082ee7d0d7c4e8fb8836', // Robinhood
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────

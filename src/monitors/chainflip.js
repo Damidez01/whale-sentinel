@@ -34,38 +34,39 @@ function advanceCursor(blockNumber) {
 
 // ── Fetch vault transactions ─────────────────────────────────
 
-async function fetchVaultTxs() {
-  try {
-    const base   = 'https://api.etherscan.io/v2/api';
-    const common = {
-      address:    VAULT,
-      sort:       'asc',
-      startblock: lastSeenBlock + 1,
-      endblock:   99999999,
-      page:       1,
-      offset:     50,
-      apikey:     ETHERSCAN_KEY,
-      chainid:    1,
-    };
-
-    const [r1, r2] = await Promise.all([
-      // txlist — ETH inflows (user sends ETH directly to vault)
-      axios.get(base, { params: { ...common, module: 'account', action: 'txlist'         }, timeout: 10_000 }),
-      // txlistinternal — ETH outflows (vault sends ETH to recipient via internal call)
-      axios.get(base, { params: { ...common, module: 'account', action: 'txlistinternal' }, timeout: 10_000 }),
-    ]);
-
-    // Process separately — do NOT merge
-    // txlist gives us parent tx (inflows), txlistinternal gives us internal calls (outflows)
-    // Merging by hash causes the parent tx to overwrite the internal record, losing outflow data
-    const inflows  = (r1.data?.status === '1' ? r1.data.result : []) || [];
-    const outflows = (r2.data?.status === '1' ? r2.data.result : []) || [];
-
-    return { inflows, outflows };
-  } catch (err) {
-    logger.error('[CF] Etherscan fetch failed', { error: err.message });
-    return { inflows: [], outflows: [] };
+async function fetchWithRetry(params, label) {
+  const base = 'https://api.etherscan.io/v2/api';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { data } = await axios.get(base, { params, timeout: 15_000 });
+      return data?.status === '1' ? data.result : [];
+    } catch (err) {
+      if (attempt === 2) {
+        logger.error(`[CF] Etherscan ${label} fetch failed`, { error: err.message });
+        return [];
+      }
+      await new Promise(r => setTimeout(r, 1500)); // brief pause before retry
+    }
   }
+  return [];
+}
+
+async function fetchVaultTxs() {
+  const common = {
+    address:    VAULT,
+    sort:       'asc',
+    startblock: lastSeenBlock + 1,
+    endblock:   99999999,
+    page:       1,
+    offset:     50,
+    apikey:     ETHERSCAN_KEY,
+    chainid:    1,
+  };
+
+  const inflows  = await fetchWithRetry({ ...common, module: 'account', action: 'txlist' }, 'txlist');
+  const outflows = await fetchWithRetry({ ...common, module: 'account', action: 'txlistinternal' }, 'txlistinternal');
+
+  return { inflows, outflows };
 }
 
 // ── Process a single vault transaction ───────────────────────
