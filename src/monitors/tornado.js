@@ -103,6 +103,10 @@ async function handleDeposit(log, poolAddr, pool) {
 }
 
 // ── WebSocket listener ───────────────────────────────────────
+// Supports an Alchemy fallback key (ALCHEMY_ETH_FALLBACK) — after 3
+// consecutive disconnects on the primary (e.g. 429 quota exceeded),
+// switches to the fallback. Switches back to primary after 3 consecutive
+// fallback failures.
 
 function startTornadoMonitor() {
   const wssUrl = process.env.ALCHEMY_ETH_WSS;
@@ -111,16 +115,26 @@ function startTornadoMonitor() {
     return;
   }
 
+  const fallbackUrl = process.env.ALCHEMY_ETH_FALLBACK || null;
   const poolAddresses = Object.keys(POOLS);
   let ws;
   let reconnectDelay = 2000;
+  let failCount      = 0;
+  let usingFallback  = false;
+
+  function currentUrl() {
+    return usingFallback && fallbackUrl ? fallbackUrl : wssUrl;
+  }
 
   function connect() {
-    logger.info('[TC] Connecting to Alchemy for Tornado Cash monitoring...');
-    ws = new WebSocket(wssUrl);
+    const url     = currentUrl();
+    const fallTag = usingFallback ? ' [FALLBACK]' : '';
+    logger.info(`[TC] Connecting to Alchemy for Tornado Cash monitoring...${fallTag}`);
+    ws = new WebSocket(url);
 
     ws.on('open', () => {
       reconnectDelay = 2000;
+      failCount      = 0;
       logger.info('[TC] Connected ✓ — Watching 100 ETH + 10 ETH pools');
 
       ws.send(JSON.stringify({
@@ -151,6 +165,16 @@ function startTornadoMonitor() {
     });
 
     ws.on('close', () => {
+      failCount++;
+      if (!usingFallback && fallbackUrl && failCount >= 3) {
+        usingFallback = true;
+        logger.warn('[TC] Primary failed 3x — switching to fallback');
+        failCount = 0;
+      } else if (usingFallback && failCount >= 3) {
+        usingFallback = false;
+        logger.warn('[TC] Fallback failed — retrying primary');
+        failCount = 0;
+      }
       logger.warn(`[TC] Disconnected. Reconnecting in ${reconnectDelay / 1000}s...`);
       setTimeout(() => {
         reconnectDelay = Math.min(reconnectDelay * 2, 30_000);

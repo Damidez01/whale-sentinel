@@ -16,6 +16,11 @@
  *   eth_getTransactionReceipt is only called when tx.from is already in
  *   watchedWithdrawals. In normal operation this is near-zero cost.
  *
+ * Alchemy fallback:
+ *   ALCHEMY_ETH_FALLBACK is used after 3 consecutive disconnects on the
+ *   primary WSS (e.g. 429 quota exceeded), and reverts to primary after
+ *   3 consecutive fallback failures. Same pattern as evm.js/tornado.js.
+ *
  * Risk scoring (0–100):
  *   +20  TC withdrawal origin
  *   +20  Fresh wallet (never seen in our store before withdrawal)
@@ -339,6 +344,10 @@ async function handleWithdrawalLog(log) {
 }
 
 // ── WebSocket — subscribes to TC Withdrawal events on ETH ────
+// Supports an Alchemy fallback key (ALCHEMY_ETH_FALLBACK) — after 3
+// consecutive disconnects on the primary (e.g. 429 quota exceeded),
+// switches to the fallback. Switches back to primary after 3 consecutive
+// fallback failures.
 
 function startTornadoDeployMonitor() {
   const wssUrl = process.env.ALCHEMY_ETH_WSS;
@@ -347,16 +356,26 @@ function startTornadoDeployMonitor() {
     return;
   }
 
+  const fallbackUrl = process.env.ALCHEMY_ETH_FALLBACK || null;
   const poolAddresses = Object.keys(TC_POOLS);
   let ws;
   let reconnectDelay = 2000;
+  let failCount      = 0;
+  let usingFallback  = false;
+
+  function currentUrl() {
+    return usingFallback && fallbackUrl ? fallbackUrl : wssUrl;
+  }
 
   function connect() {
-    logger.info('[TC-DEPLOY] Connecting — watching TC withdrawal events (0.1/1/10/100 ETH pools)');
-    ws = new WebSocket(wssUrl);
+    const url     = currentUrl();
+    const fallTag = usingFallback ? ' [FALLBACK]' : '';
+    logger.info(`[TC-DEPLOY] Connecting — watching TC withdrawal events (0.1/1/10/100 ETH pools)${fallTag}`);
+    ws = new WebSocket(url);
 
     ws.on('open', () => {
       reconnectDelay = 2000;
+      failCount      = 0;
       logger.info('[TC-DEPLOY] Connected ✓');
       ws.send(JSON.stringify({
         jsonrpc: '2.0', id: 1,
@@ -381,6 +400,16 @@ function startTornadoDeployMonitor() {
     });
 
     ws.on('close', () => {
+      failCount++;
+      if (!usingFallback && fallbackUrl && failCount >= 3) {
+        usingFallback = true;
+        logger.warn('[TC-DEPLOY] Primary failed 3x — switching to fallback');
+        failCount = 0;
+      } else if (usingFallback && failCount >= 3) {
+        usingFallback = false;
+        logger.warn('[TC-DEPLOY] Fallback failed — retrying primary');
+        failCount = 0;
+      }
       logger.warn(`[TC-DEPLOY] Disconnected. Reconnecting in ${reconnectDelay / 1000}s...`);
       setTimeout(() => {
         reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
