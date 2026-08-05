@@ -52,7 +52,8 @@ const EXCLUDED_WALLETS = {
   '0x9b82607c248389b6a40a060debe7bacd03cef06f': 'track manually',
   '0x964926d88560ea850fb2b350335c920a49619dfa': 'tracking manually',
   '0x8b0308454e69e9f4a68e325f6dd2c1f8cf7dab63': 'tracking manually',
-  '0x424a11d25bfaf28de00dbed028d7ad5e3faf928d': 'tracking manually'
+  '0x424a11d25bfaf28de00dbed028d7ad5e3faf928d': 'tracking manually',
+  '0xad0963559fbaab0d51f90ceda49d03db5f073ba0': 'Tracking manually',
    
 };
 
