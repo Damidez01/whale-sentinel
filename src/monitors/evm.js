@@ -164,6 +164,8 @@ const CEX_RECEIVERS = new Set([
   '0xd2dd7b597fd2435b6db61ddf48544fd931e6869f', // kRAKEN
   '0x3cdf67e6910c7a06c850082ee7d0d7c4e8fb8836', // kucoin
   '0x3cdf67e6910c7a06c850082ee7d0d7c4e8fb8836', // Robinhood
+  '0x9c2e658ffc8ea7fad00a4829bd4b554e8a716f73', // Thorchain
+  '0xd37bbe5744d730a1d98d8dc97c42f0ca46ad7146', // Thorchian
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
