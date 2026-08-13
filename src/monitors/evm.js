@@ -166,6 +166,12 @@ const CEX_RECEIVERS = new Set([
   '0x3cdf67e6910c7a06c850082ee7d0d7c4e8fb8836', // Robinhood
   '0x9c2e658ffc8ea7fad00a4829bd4b554e8a716f73', // Thorchain
   '0xd37bbe5744d730a1d98d8dc97c42f0ca46ad7146', // Thorchian
+  '0xe92e65049b3c2ca12806e9567b08895118c5a03f', // GSR MARKET\
+  '0x363adf8182fd0fcd0f43d1c904809f85d6f24f7a', // Cumberland
+  '0x94ec1965e5f0a831e0d29c355aadfed4e87fb3a4', // Unknown
+  '0xa8c733fcb87968f46ac711760af99fd599cca351', // Unknown
+  '0x19423dd4ec5a3f2839162b8395057b87851429a7', // Unknown
+  '0xecbac8014b1dcf9594dab517e9f33715d069ff39', // Coinbase deposit
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
