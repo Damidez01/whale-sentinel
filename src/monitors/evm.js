@@ -190,6 +190,10 @@ const CEX_RECEIVERS = new Set([
   '0xf5bec430576ff1b82e44ddb5a1c93f6f9d0884f3', // yobit
   '0x3554e6d529179a3dfb59fc0a21cf67b1cb2df8d0', // OKX deposit
   '0xfe263102682933297cb65dc813e5193249769251', // polymarket users
+  '0x342bd0b04b7165e42e3a17762a70ca54b727f2c4', // Unknown
+  '0xb8ba36e591facee901ffd3d5d82df491551ad7ef', // Mercado Bitcoin
+  '0x16754c95da5343f6973e3ac2d7560707c8bd2093', // Unknown
+  '0x160c848ece30e9879c80ef35a39a6beb922372b3', // Crypto.com
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
