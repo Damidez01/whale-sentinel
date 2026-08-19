@@ -173,6 +173,7 @@ const CEX_RECEIVERS = new Set([
   '0x19423dd4ec5a3f2839162b8395057b87851429a7', // Unknown
   '0xecbac8014b1dcf9594dab517e9f33715d069ff39', // Coinbase deposit
   '0xcb0b0531e86a9ac36fa865ca8e3dbccf047fda91', // @surfcoderepeat
+  '0x82e1762bb9b1ad6495ac4f9af2d5db0b329449cf', // Unknown
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
