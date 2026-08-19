@@ -174,6 +174,12 @@ const CEX_RECEIVERS = new Set([
   '0xecbac8014b1dcf9594dab517e9f33715d069ff39', // Coinbase deposit
   '0xcb0b0531e86a9ac36fa865ca8e3dbccf047fda91', // @surfcoderepeat
   '0x82e1762bb9b1ad6495ac4f9af2d5db0b329449cf', // Unknown
+  '0x477b8d5ef7c2c42db84deb555419cd817c336b6f', // maicoin
+  '0x278a3a299cfae97958d295f360a0c70707ccd1d4', // unkown
+  '0x57483d84305357f22e293a55bb7ddc2798352d40', // wintermute
+  '0x742d35cc6634c0532925a3b844bc454e4438f44e', // bitfex
+  '0x1a9a2fa7246e781fce3a5933777dfff3af0524ea', // unknown
+  ''
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
