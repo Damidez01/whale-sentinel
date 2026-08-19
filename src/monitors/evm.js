@@ -179,7 +179,16 @@ const CEX_RECEIVERS = new Set([
   '0x57483d84305357f22e293a55bb7ddc2798352d40', // wintermute
   '0x742d35cc6634c0532925a3b844bc454e4438f44e', // bitfex
   '0x1a9a2fa7246e781fce3a5933777dfff3af0524ea', // unknown
-  ''
+  '0xbc8a0f5e41857292d12ef620e2a5895ce65a5ce0', // wintermute deposit
+  '0xb334a61a6209f14b5fa5f1684a4ed7621f66e1ef', // btcturk
+  '0x55e909162d7f19bb68b2bbfbe0ae22beb7601f19', // okx deposit
+  '0x7bbb5df068c8d699ec7c38bd312b98066189ecec', // bitget middle
+  '0x55e909162d7f19bb68b2bbfbe0ae22beb7601f19', // okx deposit
+  '0x8bee7340304a051b16cecee05fb8c999db3b65ed', // auros
+  '0xc2945f29833708572ef90b369fe0bbfc1ff5aef6', // Binance deposit
+  '0xcfb7e94d71ab3c65479dacd9d8f2159184ca17ed', // auros Global
+  '0xf5bec430576ff1b82e44ddb5a1c93f6f9d0884f3', // yobit
+  '0x3554e6d529179a3dfb59fc0a21cf67b1cb2df8d0', // OKX deposit
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
