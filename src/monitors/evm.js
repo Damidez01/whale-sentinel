@@ -201,6 +201,9 @@ const CEX_RECEIVERS = new Set([
   '0x300226f054150e787a797f1fd07f0e38a4a655f4', // exchange
   '0x3f3ee0a9cac2d01db44001eca3e8382fbe40207b', // changeNow
   '0xe6026f60efc3d0e714f1b89c596aa484ffbd25c8', // Binance dep
+  '0x84b38bc60f3bd82640ecefa320dab2be62e2da15', // wintemute
+  '0xaea6291cb48d9675b120f74e2f0b0de01db47a00', // flow trades
+  '0x935d2e470284fb536227a76a723f96a94efae6a9', // cwallet
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
