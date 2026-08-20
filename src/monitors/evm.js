@@ -204,6 +204,8 @@ const CEX_RECEIVERS = new Set([
   '0x84b38bc60f3bd82640ecefa320dab2be62e2da15', // wintemute
   '0xaea6291cb48d9675b120f74e2f0b0de01db47a00', // flow trades
   '0x935d2e470284fb536227a76a723f96a94efae6a9', // cwallet
+  '0x97ccdbea4632140639ad5ea9b944aa034eb15fd4', //across
+  '0xceb69f6342ece283b2f5c9088ff249b5d0ae66ea', // coinbase prime
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
