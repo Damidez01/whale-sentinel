@@ -197,6 +197,8 @@ const CEX_RECEIVERS = new Set([
   '0xb916fd6e6af814f8bcd0917d3fb2acdcbe7ee228', // bitget deposit
   '0x31ae09c61a1e1f74c0058b34b9a7eaa0147f2d71', // unknown
   '0xfd9238dcd679316c6a95c08490e049fcaa9c979e', // crypto.com
+  '0x214460cf2c24c767f2f44544bd683ea9e46fe6d7', // upbit
+  '0x300226f054150e787a797f1fd07f0e38a4a655f4', // exchange
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
