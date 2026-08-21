@@ -209,6 +209,10 @@ const CEX_RECEIVERS = new Set([
   '0x9b0c45d46d386cedd98873168c36efd0dcba8d46', // Revoult
   '0xd01607c3c5ecaba394d8be377a08590149325722', // AAVE
   '0x2cff890f0378a11913b6129b2e97417a2c302680', // near
+  '0x581e87cf5fca8d1ff26553508f7da845303744a4', // coinbase/chainflip
+  '0xd779323c662146279d39a829c4db9c7de567e3c8', //
+  '0x0889e9327b98d7d1be3c301a4585ff3330502c9a', // Ox
+  '0xbba9f4714d48bf58921b82d02d0f0ac6e041c770', // bitbank
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
