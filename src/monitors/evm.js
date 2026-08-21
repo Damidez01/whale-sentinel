@@ -215,6 +215,14 @@ const CEX_RECEIVERS = new Set([
   '0xbba9f4714d48bf58921b82d02d0f0ac6e041c770', // bitbank
   '0xe12e0f117d23a5ccc57f8935cd8c4e80cd91ff01', // 1ich
   '0x5569ac972bc641fa8e07c60556e82d5e041dcb6f', //
+  '0x5c30b044e443e8c1797e8dddd67b6d3958e28632', // 
+  '0xbdba56dac0c99fa9a020045d9ccc774ed2489558', // banana
+  '0x040d6d590f4deb5013cdfdd7cd0df46ec9fe0f3f', // cumberland
+  '0xa92a3a84066da3163cb6dce15cd9d6ae185e4cae', //
+  '0xaf8526de9194ee8168eaa7672a71e60e88c421eb', //
+  '0x5e451d7b5d16882358e9dfafa0303529552f44e9', // coinbase deposit
+  '0x8fca4ade3a517133ff23ca55cdaea29c78c990b8', // Polonix
+  
 ]);
 
 // ── DEX/Swap routers — exclude from fan-out ──────────────────
