@@ -227,7 +227,16 @@ const CEX_RECEIVERS = new Set([
   '0x09671d2a9a43bf70cd282318f75c9c9f122a0440', // cumberland
   '0x27bffb0f09c18539f9a47a39958bb149fe42a155', // Auros
   '0xe68ab4f90fe026b9873f5f276ed2d7efbbbe42be', // AAVE
-  '0xe027c93123535e739e29f38bde996ed55b046d84' // chainlink
+  '0xe027c93123535e739e29f38bde996ed55b046d84', // chainlink
+  '0x7b09fc3bdd9a1eb0059f0c9d391f5d684e0f9918', //  duel
+  '0x0b0f7ebf967146566799229394171fc47f1a765a', // Boerse Stuttgart
+  '0x92b9ac4a1ba205dcf69aa201c4a6cc4f39356890', // Upbit
+  '0xe109dc13eed85411de8638dcb7f0bbfd7082534e', // Upbit
+  '0xb3e8c75912438c2282e0afa51b41bff8e835bc88', // Binance
+  '0xd3d3f5ecbdd8522bad17d9a94608132e0b0a1797', // Bybit
+  '0x40a1fe393a7f566f27df6ace18e6773be844dafc', // Pancakeswap
+  '0x6b00a4f9cc91303c1f7c78e8c65d2770075a3cf0', // derbit
+  '0x77021d475e36b3ab1921a0e3a8380f069d3263de', // Deribit
 
 ]);
 
