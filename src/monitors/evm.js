@@ -237,6 +237,7 @@ const CEX_RECEIVERS = new Set([
   '0x40a1fe393a7f566f27df6ace18e6773be844dafc', // Pancakeswap
   '0x6b00a4f9cc91303c1f7c78e8c65d2770075a3cf0', // derbit
   '0x77021d475e36b3ab1921a0e3a8380f069d3263de', // Deribit
+  '0xb51bf9029d778899d42e96ebcdc0498bd061006d', // Wealthsimple 
 
 ]);
 
