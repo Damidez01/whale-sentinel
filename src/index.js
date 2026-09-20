@@ -6,7 +6,7 @@ const { startTHORChainMonitor } = require('./monitors/thorchain');
 const { startEVMMonitor }       = require('./monitors/evm');
 const { startChainflipMonitor } = require('./monitors/chainflip');
 const { startTokenMonitor }     = require('./monitors/tokens');
-const { sendStartup }           = require('./alerts/telegram');
+const { sendStartup, startTelegram } = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
 const logger = require('./utils/logger');
 
@@ -22,6 +22,7 @@ if (missing.length) {
 // ── Startup ──────────────────────────────────────────────────
 async function main() {
   logger.info('🐕 ChainHound v2 starting...');
+  startTelegram();
 
   const modules = [];
 

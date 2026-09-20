@@ -81,3 +81,6 @@ data/
 logs/
   sentinel_YYYY-MM-DD.log  # daily log files
 ```
+# Telegram controls and additional accumulation
+
+The original bot now includes persistent `/block`, `/unblock`, `/mute`, reply-to-alert controls, and Telegram delivery retries. A separate >$50k × 5 / 30-minute accumulation rule runs alongside the existing rule. See [TELEGRAM-CONTROLS.md](TELEGRAM-CONTROLS.md) for deployment variables, volume requirements, and exact behavior.

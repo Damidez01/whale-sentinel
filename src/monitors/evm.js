@@ -1,7 +1,8 @@
 const WebSocket = require('ws');
 const { windowAdd, windowGet, setKey, getKey } = require('../utils/store');
 const { flag, flagHop, isFlagged, shortAddr } = require('../intelligence/flagged');
-const { sendAlert } = require('../alerts/telegram');
+const { sendAlert, isBlocked } = require('../alerts/telegram');
+const { extraAccumulation } = require('./accumulationExtra');
 const { toUSD, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 const { checkDeployment, confirmTokenContract, checkHopTransfer } = require('./tornadoDeploy');
@@ -15,6 +16,9 @@ const DORMANT_USD       = Number(process.env.DORMANT_MIN_USD           || 500_00
 const ACCUM_MIN_USD     = Number(process.env.ACCUM_MIN_USD             || 100_000);
 const ACCUM_COUNT       = Number(process.env.ACCUM_COUNT               || 3);
 const ACCUM_WIN_MIN     = Number(process.env.ACCUM_WIN_MIN             || 15);
+const checkAdditionalAccumulation = extraAccumulation({ windowAdd, windowGet, getKey, setKey, sendAlert, fmtUSD, shortAddr,
+  min: Number(process.env.ACCUM_EXTRA_MIN_USD || 50000), count: Number(process.env.ACCUM_EXTRA_COUNT || 5),
+  minutes: Number(process.env.ACCUM_EXTRA_WIN_MIN || 30), primaryMinutes: ACCUM_WIN_MIN });
 const CHAINFLIP_MIN_USD = Number(process.env.CHAINFLIP_MIN_USD         || 500_000);
 const FANOUT_LEG_USD    = Number(process.env.FANOUT_LEG_USD            || 10_000);
 const FANOUT_MIN_LEGS   = Number(process.env.FANOUT_MIN_LEGS           || 3);
@@ -451,6 +455,13 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
       ].join('\n'),
     });
   }
+  return count >= ACCUM_COUNT && (count - ACCUM_COUNT) % 2 === 0;
+}
+
+async function checkAccumulationRules(tx, usdValue, chain) {
+  if (!tx.to || CEX_RECEIVERS.has(tx.to.toLowerCase()) || isBlocked(tx.to)) return;
+  const primaryTriggered = await checkRapidAccumulation(tx, usdValue, chain);
+  checkAdditionalAccumulation(tx, usdValue, chain, primaryTriggered);
 }
 
 // ── Rule 4: Structuring ──────────────────────────────────────
@@ -574,9 +585,11 @@ function checkFanOut(tx, usdValue, chain) {
   // Skip known noise — bridges/protocols legitimately push large ETH outbound
   if (KNOWN_FUNDING_SOURCES.has(fromLower)) return;
   if (CEX_RECEIVERS.has(fromLower))         return;
+  if (isBlocked(fromLower)) return;
   if (SWAP_ROUTERS.has(fromLower))          return;
   // Skip legs going to obvious non-suspicious destinations
   if (CEX_RECEIVERS.has(toLower))   return;
+  if (isBlocked(toLower)) return;
   if (SWAP_ROUTERS.has(toLower))    return;
 
   const fanKey = `fanout:${chain}:${fromLower}`;
@@ -675,7 +688,7 @@ async function handleTx(tx, chain, httpUrl, deployWatchOnly = false) {
     await Promise.all([
       checkDirectTCDeposit(tx, usdValue, chain),
       checkChainflip(tx, usdValue, chain),
-      checkRapidAccumulation(tx, usdValue, chain),
+      checkAccumulationRules(tx, usdValue, chain),
       checkStructuring(tx, usdValue, chain),
       checkFlaggedWallet(tx, usdValue, chain),
       checkDormantWallet(tx, usdValue, chain),
