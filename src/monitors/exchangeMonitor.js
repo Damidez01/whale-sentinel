@@ -10,26 +10,61 @@ let ethereum, started = false;
 
 function makeRpc(urls) {
   const providers = [...new Set(urls.filter(Boolean).map(value => value.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace('/ws/v3/', '/v3/')))];
-  const cooldown = new Map(), verified = new Set();
+  const cooldown = new Map(), verified = new Set(), failures = new Map();
+  function describe(err) {
+    const status = Number(err.response?.status);
+    const code = Number(err.rpcCode);
+    const message = String(err.rpcMessage || err.response?.data?.error?.message || '');
+    const detail = /block range|range.*block|10 block|too many results|response size/i.test(message) ? 'log range/result limit' :
+      /quota|compute unit|credits|capacity|rate limit|too many requests/i.test(message) ? 'quota/rate limit' :
+      /auth|api.key|unauthorized|forbidden/i.test(message) ? 'authentication rejected' :
+      /invalid param|invalid request/i.test(message) ? 'request rejected' : 'provider request failed';
+    if (status) return `HTTP ${status} (${detail})`;
+    if (Number.isFinite(code)) return `RPC ${code} (${detail})`;
+    if (err.message === 'Wrong Ethereum chain' || err.message === 'RPC data not yet available' || err.message === 'Invalid RPC response') return err.message;
+    return 'connection/timeout failure';
+  }
   async function request(url, method, params) {
     const { data } = await axios.post(url, { jsonrpc: '2.0', id: 1, method, params }, { timeout: 15000 });
-    if (data?.error || !data || !Object.hasOwn(data, 'result')) throw Error('RPC returned an error');
+    if (data?.error) {
+      // Some plans limit getLogs block ranges. Split only an explicit range/size
+      // rejection, never authentication or quota errors. No cursor is committed
+      // unless every subrequest succeeds.
+      if (method === 'eth_getLogs' && /block range|range.*block|10 block|too many results|response size/i.test(data.error.message || '')) {
+        const from = Number(BigInt(params[0].fromBlock)), to = Number(BigInt(params[0].toBlock));
+        if (from < to) {
+          const middle = Math.floor((from + to) / 2);
+          const left = await request(url, method, [{ ...params[0], toBlock: '0x' + middle.toString(16) }]);
+          const right = await request(url, method, [{ ...params[0], fromBlock: '0x' + (middle + 1).toString(16) }]);
+          if (!Array.isArray(left) || !Array.isArray(right)) throw Error('Invalid RPC response');
+          return [...left, ...right];
+        }
+      }
+      const err = Error('RPC returned an error'); err.rpcCode = data.error.code; err.rpcMessage = data.error.message; throw err;
+    }
+    if (!data || !Object.hasOwn(data, 'result')) throw Error('Invalid RPC response');
     return data.result;
   }
   return async (method, params) => {
-    for (const url of providers) {
+    for (const [index, url] of providers.entries()) {
       if ((cooldown.get(url) || 0) > Date.now()) continue;
+      let activeMethod = 'eth_chainId';
       try {
         if (!verified.has(url)) {
           if (await request(url, 'eth_chainId', []) !== '0x1') throw Error('Wrong Ethereum chain');
           verified.add(url);
         }
+        activeMethod = method;
         const result = await request(url, method, params);
         if (result === null) throw Error('RPC data not yet available');
+        failures.delete(url);
         return result;
-      } catch { cooldown.set(url, Date.now() + 120000); }
+      } catch (err) {
+        failures.set(url, `provider ${index + 1} ${activeMethod}: ${describe(err)}`);
+        cooldown.set(url, Date.now() + 120000);
+      }
     }
-    throw Error('Exchange Ethereum RPC unavailable; check primary/fallback or provider quota');
+    throw Error(`Exchange Ethereum RPC unavailable; ${[...failures.values()].join('; ') || 'no providers configured'}`);
   };
 }
 function observeEthereumBlock(block) { ethereum?.observe(block); }

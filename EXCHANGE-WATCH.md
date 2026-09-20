@@ -65,6 +65,10 @@ Pending alerts are persisted before handoff to the existing durable Telegram que
 
 ## Verification
 
+Price recovery: CoinGecko is tried first, followed by Coinbase's public USD spot endpoint when available for that asset. Failed sources back off for at least 60 seconds (or their Retry-After), concurrent requests for the same asset share one lookup, and exchange scans accept cached quotes for at most 15 minutes. No stablecoin is silently valued at $1. `[Prices]` warnings identify the failed source and HTTP status without printing credentials. If both sources fail and no recent quote exists, scanning still pauses safely.
+
+Ethereum RPC warnings identify the provider number, failing method and HTTP/RPC error code. Explicit log-range/result-size rejections are retried in smaller ranges; this may add RPC calls. Quota and authentication failures are not treated as range failures. These still require checking provider allowance or Railway credentials. Saved progress is retained until the entire scan succeeds.
+
 `npm test` checks threshold boundaries, distinct transactions/destinations, asset aggregation, exclusions, restart recovery, filtered requests, duplicate logs, failed receipts, pagination failure, TRX conversion, and TRON command handling without contacting providers or sending Telegram messages. Actual credentialed provider throughput and deployment still need observation after rollout.
 
 Sources: [Alchemy log filters](https://www.alchemy.com/docs/reference/logs), [Alchemy costs](https://www.alchemy.com/docs/reference/compute-unit-costs), [TronGrid token history](https://developers.tron.network/reference/get-trc20-transaction-info-by-account-address), [TronGrid native history](https://developers.tron.network/reference/get-transaction-info-by-account-address), [TronGrid rate limits](https://developers.tron.network/reference/rate-limits), [Tether supported protocols](https://tether.to/es/supported-protocols/).
