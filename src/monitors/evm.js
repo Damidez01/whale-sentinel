@@ -3,6 +3,7 @@ const { windowAdd, windowGet, setKey, getKey } = require('../utils/store');
 const { flag, flagHop, isFlagged, shortAddr } = require('../intelligence/flagged');
 const { sendAlert, isBlocked } = require('../alerts/telegram');
 const { extraAccumulation } = require('./accumulationExtra');
+const { isExchangeWallet } = require('./exchangeWatchlist');
 const { toUSD, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
 const { checkDeployment, confirmTokenContract, checkHopTransfer } = require('./tornadoDeploy');
@@ -459,6 +460,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
 }
 
 async function checkAccumulationRules(tx, usdValue, chain) {
+  if (isExchangeWallet(tx.to, chain)) return; // Dedicated watchlist owns these alerts.
   if (!tx.to || CEX_RECEIVERS.has(tx.to.toLowerCase()) || isBlocked(tx.to)) return;
   const primaryTriggered = await checkRapidAccumulation(tx, usdValue, chain);
   checkAdditionalAccumulation(tx, usdValue, chain, primaryTriggered);
@@ -576,6 +578,7 @@ async function checkDormantWallet(tx, usdValue, chain) {
 //   - Funds arrived from a bridge output address
 
 function checkFanOut(tx, usdValue, chain) {
+  if (isExchangeWallet(tx.from, chain)) return;
   if (!tx.from || !tx.to) return;
   if (usdValue < FANOUT_LEG_USD) return;
 
@@ -712,7 +715,7 @@ function getHttpUrl(wssUrl) {
     .replace('/ws/v3/', '/v3/');
 }
 
-async function fetchBlock(blockHash, httpUrl) {
+async function fetchBlock(blockHash, httpUrl, chain) {
   try {
     const axios = require('axios');
     const { data } = await axios.post(httpUrl, {
@@ -720,6 +723,14 @@ async function fetchBlock(blockHash, httpUrl) {
       method: 'eth_getBlockByHash',
       params: [blockHash, true],
     }, { timeout: 10_000 });
+    if (data?.result && httpUrl && data.result.number) {
+      // Reuse already-downloaded Ethereum blocks for the dedicated watchlist.
+      // L2 deploy-only blocks are excluded.
+      if (chain === 'ETH') {
+        try { require('./exchangeMonitor').observeEthereumBlock(data.result); }
+        catch { logger.warn('[Exchange:ETH] Could not cache block; original monitoring continues'); }
+      }
+    }
     return data?.result?.transactions || [];
   } catch {
     return [];
@@ -784,7 +795,7 @@ function connectChain(primaryUrl, chain, deployWatchOnly = false, fallbackUrl = 
         const blockHash = msg.params.result.hash;
         const httpUrl   = getHttpUrl(currentUrl());
 
-        fetchBlock(blockHash, httpUrl).then(txs => {
+        fetchBlock(blockHash, httpUrl, chain).then(txs => {
           for (const tx of txs) {
             if (tx && tx.from && tx.hash) handleTx(tx, chain, httpUrl, deployWatchOnly);
           }
@@ -849,4 +860,4 @@ function startEVMMonitor() {
   }
 }
 
-module.exports = { startEVMMonitor };
+module.exports = { startEVMMonitor, isNoisyDestination: address => CEX_RECEIVERS.has(address?.toLowerCase()) || SWAP_ROUTERS.has(address?.toLowerCase()) };

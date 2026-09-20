@@ -87,6 +87,7 @@ function engine() {
       if (name === '../utils/store') return store;
       if (name === '../alerts/telegram') return { sendAlert: a => alerts.push(a), isBlocked: a => a === 'blocked' };
       if (name === './accumulationExtra') return { extraAccumulation };
+      if (name === './exchangeWatchlist') return require('../src/monitors/exchangeWatchlist');
       if (name === '../intelligence/flagged') return { shortAddr: a => a };
       if (name === '../utils/prices') return { fmtUSD: n => '$' + n };
       return {};
@@ -132,6 +133,7 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
       if (name === 'path') return path;
       if (name === './durable') return { DurableState, Delivery };
       if (name === './commands') return { commandHandler };
+      if (name === '../utils/addresses') return require('../src/utils/addresses');
       return { warn() {}, error() {}, info() {} };
     } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8'), sandbox);

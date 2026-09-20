@@ -6,6 +6,7 @@ const { startTHORChainMonitor } = require('./monitors/thorchain');
 const { startEVMMonitor }       = require('./monitors/evm');
 const { startChainflipMonitor } = require('./monitors/chainflip');
 const { startTokenMonitor }     = require('./monitors/tokens');
+const { startExchangeMonitor } = require('./monitors/exchangeMonitor');
 const { sendStartup, startTelegram } = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
 const logger = require('./utils/logger');
@@ -37,7 +38,10 @@ async function main() {
 
   // THORChain
 // startTHORChainMonitor();
- modules.push('THORChain (ETH/stables ↔ BTC)');
+  // Remains disabled; do not advertise it as an active module.
+
+  try { modules.push(...startExchangeMonitor()); }
+  catch { logger.error('[Exchange] Watchlist could not start; inspect configuration and exchange-watch.json. Original monitoring continues.'); }
 
   // EVM chains
   startEVMMonitor();

@@ -83,4 +83,6 @@ logs/
 ```
 # Telegram controls and additional accumulation
 
+The supplied ChangeNOW/FixedFloat wallet watchlist now supports ETH/USDC/USDT/DAI on Ethereum and USDT/TRX on TRON. See [EXCHANGE-WATCH.md](EXCHANGE-WATCH.md) for its separate >=$50k x 3 / 15-minute rule, filtered feeds, provider costs and TronGrid setup.
+
 The original bot now includes persistent `/block`, `/unblock`, `/mute`, reply-to-alert controls, and Telegram delivery retries. A separate >$50k × 5 / 30-minute accumulation rule runs alongside the existing rule. See [TELEGRAM-CONTROLS.md](TELEGRAM-CONTROLS.md) for deployment variables, volume requirements, and exact behavior.

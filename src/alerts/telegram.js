@@ -2,6 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
 const { DurableState, Delivery } = require('./durable');
 const { commandHandler } = require('./commands');
+const { normalizeWallet } = require('../utils/addresses');
 const logger = require('../utils/logger');
 
 const bot     = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false, request: { timeout: 45000 } });
@@ -12,7 +13,7 @@ const handleCommand = commandHandler(state, { chatId: CHAT_ID,
   adminIds: (process.env.TELEGRAM_ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean) });
 let timer;
 
-const CHAIN_EMOJI = { ETH: '⟠', BASE: '🔵', ARB: '🔷', THOR: '⚡' };
+const CHAIN_EMOJI = { ETH: '⟠', BASE: '🔵', ARB: '🔷', THOR: '⚡', TRON: '🔺' };
 
 // ── Message builder ──────────────────────────────────────────
 
@@ -35,6 +36,7 @@ function buildMessage(alert) {
       BASE: `https://basescan.org/tx/${alert.txHash}`,
       ARB:  `https://arbiscan.io/tx/${alert.txHash}`,
       THOR: `https://thorchain.net/tx/${alert.txHash}`,
+      TRON: `https://tronscan.org/#/transaction/${alert.txHash}`,
     };
     if (explorers[alert.chain]) {
       lines.push(`📎 [View on Explorer](${explorers[alert.chain]})`);
@@ -43,7 +45,9 @@ function buildMessage(alert) {
 
   // Wallet link — Etherscan for EVM, THORChain explorer for THOR
   if (alert.walletLink && alert.wallet) {
-    if (alert.chain === 'THOR') {
+    if (alert.chain === 'TRON') {
+      lines.push(`🔍 [Wallet on Tronscan](https://tronscan.org/#/address/${alert.wallet})`);
+    } else if (alert.chain === 'THOR') {
       lines.push(`🔍 [Wallet on THORChain](https://thorchain.net/address/${alert.wallet})`);
     } else {
       lines.push(`🔍 [Wallet on Etherscan](https://etherscan.io/address/${alert.wallet})`);
@@ -61,7 +65,7 @@ const delivery = new Delivery(state, {
   send: (text, alert, plain) => bot.sendMessage(CHAT_ID, text.slice(0, 4000), {
     ...(!plain && !alert.plain ? { parse_mode: 'Markdown' } : {}),
     disable_web_page_preview: false,
-    ...(/^0x[0-9a-f]{40}$/i.test(alert.wallet || '') ?
+    ...(normalizeWallet(alert.wallet) ?
       { reply_markup: { inline_keyboard: [[{ text: 'Block wallet', callback_data: 'block-wallet' }]] } } : {}),
   }),
   onError: code => logger.warn(`[Telegram] Delivery pending; retry scheduled (${code})`),

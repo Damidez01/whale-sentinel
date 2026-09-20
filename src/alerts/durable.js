@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
+const { normalizeWallet } = require('../utils/addresses');
 
 class DurableState {
   constructor(file) {
@@ -25,7 +26,7 @@ class DurableState {
     return result;
   }
   isBlocked(address, now = Date.now()) {
-    const row = this.data.blocked[address?.toLowerCase()];
+    const row = this.data.blocked[normalizeWallet(address)];
     return !!row && (!row.until || row.until > now);
   }
 }
@@ -61,8 +62,8 @@ class Delivery {
       this.state.update(s => {
         s.queue = s.queue.filter(x => x.id !== item.id);
         s.sent[item.id] = this.now() + 300000;
-        if (result?.message_id && /^0x[0-9a-f]{40}$/i.test(item.alert.wallet || '')) {
-          s.messages[result.message_id] = item.alert.wallet.toLowerCase();
+        if (result?.message_id && normalizeWallet(item.alert.wallet)) {
+          s.messages[result.message_id] = normalizeWallet(item.alert.wallet);
           const ids = Object.keys(s.messages);
           for (const id of ids.slice(0, Math.max(0, ids.length - 10000))) delete s.messages[id];
         }

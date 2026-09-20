@@ -4,3 +4,5 @@ logs/
 data/flagged.json
 data/telegram-state.json
 data/telegram-state.json.tmp
+data/exchange-watch.json
+data/exchange-watch.json.tmp

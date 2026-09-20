@@ -1,5 +1,5 @@
-const ADDRESS = /^0x[0-9a-f]{40}$/i;
-const HELP = '/block 0xAddress reason\n/unblock 0xAddress\n/mute 0xAddress 24h\n/blocked\nOr reply to a wallet alert with /block, /unblock or /mute 24h.\nBlocks suppress alerts about that wallet across EVM chains; they do not block blockchain transactions.';
+const { normalizeWallet } = require('../utils/addresses');
+const HELP = '/block Address reason\n/unblock Address\n/mute Address 24h\n/blocked\nAccepts EVM (0x...) and TRON (T...) addresses.\nOr reply to a wallet alert with /block, /unblock or /mute 24h.\nBlocks suppress wallet alerts; they do not block blockchain transactions.';
 
 function commandHandler(state, { chatId, adminIds = [], now = Date.now } = {}) {
   const admins = new Set(adminIds.map(String));
@@ -19,9 +19,9 @@ function commandHandler(state, { chatId, adminIds = [], now = Date.now } = {}) {
       return rows.map(([a,r]) => `${a}\n${r.until ? 'Muted until ' + new Date(r.until).toISOString() : 'Blocked'} — ${r.reason}`).join('\n\n');
     }
     const replied = state.data.messages[message.reply_to_message?.message_id];
-    if (args[0]?.startsWith('0x') && !ADDRESS.test(args[0])) return 'Invalid wallet address. Use 0x followed by 40 hexadecimal characters.';
-    const address = ADDRESS.test(args[0] || '') ? args.shift().toLowerCase() : replied;
-    if (!address) return 'Supply a valid 0x wallet address, or reply to a wallet alert sent after this update.\n' + HELP;
+    if (args[0]?.startsWith('0x') && !normalizeWallet(args[0])) return 'Invalid wallet address. Use 0x followed by 40 hexadecimal characters.';
+    const address = normalizeWallet(args[0]) ? normalizeWallet(args.shift()) : replied;
+    if (!address) return 'Supply a valid wallet address (0x for EVM, T... for TRON), or reply to a wallet alert sent after this update.\n' + HELP;
     const id = `${message.chat.id}:${message.message_id}`;
     if (state.data.commands[id]) return 'This command was already applied.';
     let until = 0;
@@ -36,7 +36,7 @@ function commandHandler(state, { chatId, adminIds = [], now = Date.now } = {}) {
       if (command === 'unblock' || command === 'remove') delete s.blocked[address];
       else {
         s.blocked[address] = { until, reason: args.join(' ').slice(0, 200) || 'Manually excluded', by: uid, at: now() };
-        s.queue = s.queue.filter(x => x.alert.wallet?.toLowerCase() !== address);
+        s.queue = s.queue.filter(x => normalizeWallet(x.alert.wallet) !== address);
       }
       s.commands[id] = now();
       for (const [key,at] of Object.entries(s.commands)) if (at < now() - 7 * 86400000) delete s.commands[key];

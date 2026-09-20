@@ -5,6 +5,7 @@ const TTL_MS = 60_000; // 60 second cache
 
 const SYMBOL_TO_ID = {
   ETH:  'ethereum',
+  TRX:  'tron',
   BTC:  'bitcoin',
   WBTC: 'wrapped-bitcoin',
   USDC: 'usd-coin',
@@ -14,7 +15,7 @@ const SYMBOL_TO_ID = {
   WETH: 'weth',
 };
 
-async function getPrice(symbol) {
+async function getPrice(symbol, { maxAgeMs = Infinity } = {}) {
   const id = SYMBOL_TO_ID[symbol?.toUpperCase()];
   if (!id) return null;
 
@@ -30,7 +31,7 @@ async function getPrice(symbol) {
     if (price) cache.set(id, { price, ts: Date.now() });
     return price;
   } catch {
-    return hit?.price ?? null; // return stale if available
+    return hit && Date.now() - hit.ts <= maxAgeMs ? hit.price : null;
   }
 }
 

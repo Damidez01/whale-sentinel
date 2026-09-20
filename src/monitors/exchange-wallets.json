@@ -1,0 +1,7 @@
+[
+  { "service": "ChangeNOW", "chain": "ETH", "address": "0x3f3Ee0a9cAC2d01DB44001eca3E8382fbe40207B" },
+  { "service": "ChangeNOW", "chain": "ETH", "address": "0x64cdAA89629fe003eAa31B480d8b63372D109A53" },
+  { "service": "ChangeNOW", "chain": "TRON", "address": "TSBHPFbPUUntP8d3mZ4KzdCNJnFJDsDGCq" },
+  { "service": "FixedFloat", "chain": "ETH", "address": "0x4E5B2e1dc63F6b91cb6Cd759936495434C7e972F" },
+  { "service": "FixedFloat", "chain": "TRON", "address": "TDoXUNZ6PajKuiUkcYg3EDSV9bnqGqsbcf" }
+]
