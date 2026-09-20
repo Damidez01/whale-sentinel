@@ -127,3 +127,28 @@ test('Telegram block/unblock preserves TRON case and persists its exclusion', t 
   assert.equal(new DurableState(state.file).isBlocked(address),true);
   handle(message('/unblock '+address,2));assert.equal(state.isBlocked(address),false);
 });
+
+test('TRON filters indexer boundary records locally for native and token history', async t => {
+  const address=tronFromHex('41'+'22'.repeat(20)), from=tronFromHex('41'+'11'.repeat(20));
+  const now=1789940931750, cursor=1789940781280, start=cursor-120000, end=now-30000;
+  const f=fixture(t,[{chain:'TRON',service:'Fixture',address}]);
+  f.store.update(s=>{s.cursors.TRON={at:cursor};});
+  // Mirrors the observed response: 1789940661000 is 280ms before the filter.
+  const times=[Math.floor(start/1000)*1000, start, start+1000, end, end+250];
+  const native=times.map((at,i)=>({txID:'n'+i,block_timestamp:at,ret:[{contractRet:'SUCCESS'}],raw_data:{contract:[{type:'TransferContract',parameter:{value:{owner_address:'41'+'11'.repeat(20),to_address:'41'+'22'.repeat(20),amount:50000000000}}}]}}));
+  const tokens=times.map((at,i)=>({transaction_id:'t'+i,block_timestamp:at,type:'Transfer',token_info:{address:TRON_USDT},from,to:address,value:'50000000000'}));
+  const feed=new TronExchangeFeed({engine:f.engine,rules,now:()=>now,price:async()=>1,request:async route=>({success:true,data:route.endsWith('/trc20')?tokens:native,meta:{}})});
+  await feed.poll();
+  assert.equal(f.store.data.cursors.TRON.at,end);
+  const seen=Object.keys(f.store.data.seen);
+  assert.equal(seen.length,6);
+  assert.ok(!seen.some(k=>k.includes('n0:')||k.includes('t0:')||k.includes('n4:')||k.includes('t4:')));
+  await feed.poll(); assert.equal(Object.keys(f.store.data.seen).length,6);
+});
+
+test('TRON truly missing native timestamps still retain the cursor', async t => {
+  const f=fixture(t,[watchlist[2]]);
+  const feed=new TronExchangeFeed({engine:f.engine,rules,price:async()=>1,request:async route=>({success:true,data:route.endsWith('/trc20')?[]:[{txID:'missing-time',ret:[{contractRet:'SUCCESS'}]}]})});
+  await assert.rejects(feed.poll(),/Invalid TronGrid native timestamp/);
+  assert.equal(f.store.data.cursors.TRON,undefined);
+});

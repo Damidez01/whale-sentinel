@@ -129,7 +129,10 @@ class TronExchangeFeed {
       const transfers = await this.pages(wallet.address, true, start, end);
       for (const row of transfers) {
         if (row.type !== 'Transfer' || row.token_info?.address !== TRON_USDT) continue;
-        if (!row.transaction_id || !Number.isFinite(row.block_timestamp) || row.block_timestamp < start || row.block_timestamp > end) throw Error('Invalid TronGrid token timestamp/identity');
+        if (!row.transaction_id || !Number.isSafeInteger(row.block_timestamp) || row.block_timestamp <= 0) throw Error('Invalid TronGrid token timestamp/identity');
+        // The indexer can return boundary records outside millisecond filters.
+        // Apply the exact window locally; retain pagination and overlap dedup.
+        if (row.block_timestamp < start || row.block_timestamp > end) continue;
         if (row.from !== wallet.address && row.to !== wallet.address) throw Error('TronGrid transfer outside requested wallet');
         events.push({ chain: 'TRON', symbol: 'USDT', hash: row.transaction_id,
           id: `${row.transaction_id}:${row.event_index ?? `${row.from}:${row.to}:${row.value}`}:USDT`,
@@ -138,7 +141,8 @@ class TronExchangeFeed {
       const transactions = await this.pages(wallet.address, false, start, end);
       for (const tx of transactions) {
         if (tx.ret?.[0]?.contractRet !== 'SUCCESS') continue;
-        if (!tx.txID || !Number.isFinite(tx.block_timestamp) || tx.block_timestamp < start || tx.block_timestamp > end) throw Error('Invalid TronGrid native timestamp/identity');
+        if (!tx.txID || !Number.isSafeInteger(tx.block_timestamp) || tx.block_timestamp <= 0) throw Error('Invalid TronGrid native timestamp/identity');
+        if (tx.block_timestamp < start || tx.block_timestamp > end) continue;
         for (const [index,contract] of (tx.raw_data?.contract || []).entries()) {
           if (contract.type !== 'TransferContract') continue; // Native TRX only; not internal contract transfers.
           const fields = contract.parameter?.value;

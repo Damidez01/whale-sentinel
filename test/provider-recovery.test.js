@@ -107,3 +107,34 @@ test('quota rejection is not recursively split and single-block limits fail safe
     { error: { code: -32005, message: 'too many results' } } }));
   await assert.rejects(limited(['https://provider'])('eth_getLogs', [{ fromBlock: '0x1', toBlock: '0x1' }]), /log range\/result limit/);
 });
+
+test('HTTP 400 log-range errors split just like HTTP 200 JSON-RPC errors', async () => {
+  const accepted = [];
+  const make = rpc(async (_url, body) => {
+    if (body.method === 'eth_chainId') return { data: { result: '0x1' } };
+    const filter = body.params[0], from = Number(BigInt(filter.fromBlock)), to = Number(BigInt(filter.toBlock));
+    if (to - from + 1 > 10) throw { response: { status: 400, data: { error: { code: -32600, message: 'limited to 10 block range' } } } };
+    accepted.push([from,to]); return { data: { result: [from] } };
+  });
+  assert.equal((await make(['https://provider'])('eth_getLogs', [{fromBlock:'0x1',toBlock:'0x19'}])).length,4);
+  assert.deepEqual(accepted, [[1,7],[8,13],[14,19],[20,25]]);
+});
+
+test('HTTP 400 authentication errors are not split and failed subranges do not return partial results', async () => {
+  let calls = 0;
+  const make = rpc(async (_url, body) => {
+    if (body.method === 'eth_chainId') return { data: { result: '0x1' } };
+    calls++;
+    throw { response: { status: 400, data: { error: { code: -32600, message: 'invalid API key SECRET' } } } };
+  });
+  await assert.rejects(make(['https://provider'])('eth_getLogs', [{fromBlock:'0x1',toBlock:'0x19'}]), /HTTP 400 \(authentication rejected\)/);
+  assert.equal(calls,1);
+  const partial = rpc(async (_url, body) => {
+    if (body.method === 'eth_chainId') return { data: { result: '0x1' } };
+    const f=body.params[0];
+    if (f.fromBlock==='0x1' && f.toBlock==='0x2') throw { response: {status:400,data:{error:{message:'block range limit'}}} };
+    if (f.fromBlock==='0x2') throw {response:{status:429}};
+    return {data:{result:['first block']}};
+  });
+  await assert.rejects(partial(['https://provider'])('eth_getLogs',[{fromBlock:'0x1',toBlock:'0x2'}]), /HTTP 429/);
+});

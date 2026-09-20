@@ -25,7 +25,15 @@ function makeRpc(urls) {
     return 'connection/timeout failure';
   }
   async function request(url, method, params) {
-    const { data } = await axios.post(url, { jsonrpc: '2.0', id: 1, method, params }, { timeout: 15000 });
+    let data, httpError;
+    try {
+      ({ data } = await axios.post(url, { jsonrpc: '2.0', id: 1, method, params }, { timeout: 15000 }));
+    } catch (err) {
+      // Alchemy can return JSON-RPC range errors with HTTP 400. Axios throws
+      // before the normal JSON-RPC branch, so inspect that body as well.
+      if (err.response?.status !== 400 || !err.response?.data?.error) throw err;
+      data = err.response.data; httpError = err;
+    }
     if (data?.error) {
       // Some plans limit getLogs block ranges. Split only an explicit range/size
       // rejection, never authentication or quota errors. No cursor is committed
@@ -40,7 +48,7 @@ function makeRpc(urls) {
           return [...left, ...right];
         }
       }
-      const err = Error('RPC returned an error'); err.rpcCode = data.error.code; err.rpcMessage = data.error.message; throw err;
+      const err = httpError || Error('RPC returned an error'); err.rpcCode = data.error.code; err.rpcMessage = data.error.message; throw err;
     }
     if (!data || !Object.hasOwn(data, 'result')) throw Error('Invalid RPC response');
     return data.result;
