@@ -20,7 +20,7 @@ function prices(get, now) {
 }
 function rpc(post) {
   return load('src/monitors/exchangeMonitor.js', {
-    axios: { post }, path: {}, './exchangeCore': {}, './exchangeFeeds': {},
+    axios: { post }, path: {}, './exchangeCore': {}, './exchangeFeeds': {}, './exchangeFresh': {},
     './exchange-wallets.json': [], '../utils/prices': {}, '../alerts/telegram': {}, '../utils/logger': {},
   }).makeRpc;
 }

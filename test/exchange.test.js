@@ -8,10 +8,11 @@ const { EthereumExchangeFeed, TronExchangeFeed, TRANSFER, TOKENS, TRON_USDT } = 
 const { normalizeWallet, tronFromHex } = require('../src/utils/addresses');
 const { DurableState } = require('../src/alerts/durable');
 const { commandHandler } = require('../src/alerts/commands');
+const { FreshDeposits } = require('../src/monitors/exchangeFresh');
 const watchlist = require('../src/monitors/exchange-wallets.json');
 const A = normalizeWallet(watchlist[0].address), B = '0x' + '2'.repeat(40), C = '0x' + '3'.repeat(40), D = '0x' + '4'.repeat(40);
 const T = Date.now() - 300000;
-const rules = settings({});
+const rules = settings({ EXCHANGE_FRESH_ONLY: 'false' });
 const row = (i, extra = {}) => ({ chain: 'ETH', symbol: 'ETH', from: B, to: A, usd: 50000, id: 't' + i, hash: 't' + i, at: T + i * 60000, ...extra });
 function fixture(t, list = watchlist, config = rules, options) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exchange-test-'));
@@ -170,4 +171,90 @@ test('TRON truly missing native timestamps still retain the cursor', async t => 
   const feed=new TronExchangeFeed({engine:f.engine,rules,price:async()=>1,request:async route=>({success:true,data:route.endsWith('/trc20')?[]:[{txID:'missing-time',ret:[{contractRet:'SUCCESS'}]}]})});
   await assert.rejects(feed.poll(),/Invalid TronGrid native timestamp/);
   assert.equal(f.store.data.cursors.TRON,undefined);
+});
+
+test('blocking prunes active inflow and fan-out counts and pending summaries', t => {
+  for (const incoming of [true,false]) {
+    const blocked=new Set(), f=fixture(t,watchlist,rules,{isBlocked:a=>blocked.has(a)});
+    const event=(i,peer)=>row(i,{from:incoming?peer:A,to:incoming?A:peer});
+    f.engine.commit([event(0,B),event(1,C)]);
+    blocked.add(B);
+    f.engine.commit([event(2,D)]);
+    assert.equal(f.store.data.pending.length,0);
+    f.engine.commit([event(3,'0x'+'5'.repeat(40))]);
+    assert.equal(f.store.data.pending.length,1);
+    blocked.add(C);
+    const sent=[];f.engine.flush(a=>sent.push(a));
+    assert.equal(sent.length,0);assert.equal(f.store.data.pending.length,0);
+    assert.ok(Object.values(f.store.data.windows).flat().every(e=>e.from!==B&&e.to!==B&&e.from!==C&&e.to!==C));
+  }
+});
+
+test('fresh-only upgrade removes unverified incoming windows but preserves fan-out', t => {
+  const f=fixture(t);f.engine.commit([row(0),row(1),row(2)]);
+  const upgraded=new ExchangeEngine(f.store,watchlist,settings({}));
+  upgraded.flush(()=>{throw Error('old inflow must not be delivered');});
+  assert.equal(f.store.data.pending.length,0);
+  upgraded.commit([row(3),row(4),row(5)]);assert.equal(f.store.data.pending.length,0);
+  upgraded.commit([row(6,{freshApproved:true}),row(7,{freshApproved:true}),row(8,{freshApproved:true})]);
+  assert.equal(f.store.data.pending.length,1);
+});
+
+test('ETH freshness accepts short history including gas funding and caches the deposit result', async t => {
+  const config=settings({}),f=fixture(t,watchlist,config),calls=[];
+  const event=row(0,{blockNumber:100});
+  const fresh=new FreshDeposits({engine:f.engine,rules:config,rpc:async(method,params)=>{
+    calls.push([method,params]);
+    if(method==='eth_getCode')return '0x';
+    if(method==='eth_getTransactionCount')return '0x2';
+    return {transfers:[{hash:event.hash,metadata:{blockTimestamp:new Date(event.at).toISOString()}},
+      {hash:'gas',metadata:{blockTimestamp:new Date(event.at-60000).toISOString()}}]};
+  }});
+  const filtered=await fresh.filter([event]);assert.equal(filtered[0].freshApproved,true);
+  assert.equal(calls.length,4);
+  await fresh.filter([event]);assert.equal(calls.length,4);
+  assert.equal(calls[2][1][0].fromBlock,'0x0');assert.equal(calls[2][1][0].maxCount,'0xb');
+  assert.equal(calls[2][1][0].toBlock,'0x64');
+  const restarted=new ExchangeEngine(new ExchangeStore(f.store.file),watchlist,config);
+  assert.equal((await new FreshDeposits({engine:restarted,rules:config,rpc:()=>{throw Error('cached');}}).filter([event]))[0].freshApproved,true);
+});
+
+test('freshness rejects old, busy and truncated histories and defers incomplete history', async t => {
+  for(const mode of ['old','busy','truncated','missing']) {
+    const config=settings({}),f=fixture(t,watchlist,config),event=row(0,{blockNumber:100});
+    const fresh=new FreshDeposits({engine:f.engine,rules:config,rpc:async method=>{
+      if(method==='eth_getCode')return '0x';if(method==='eth_getTransactionCount')return '0x1';
+      const transfers=[{hash:mode==='missing'?'other':event.hash,metadata:{blockTimestamp:new Date(event.at).toISOString()}}];
+      if(mode==='old')transfers.push({hash:'old',metadata:{blockTimestamp:new Date(event.at-49*3600000).toISOString()}});
+      if(mode==='busy')for(let i=0;i<10;i++)transfers.push({hash:'busy'+i,metadata:{blockTimestamp:new Date(event.at).toISOString()}});
+      return {transfers,pageKey:mode==='truncated'?'next':undefined};
+    }});
+    if(mode==='missing')await assert.rejects(fresh.filter([event]),/not indexed/);
+    else assert.equal((await fresh.filter([event]))[0].freshApproved,false);
+  }
+});
+
+test('freshness does not spend API requests on fan-out, low-value or blocked deposits', async t => {
+  const config=settings({}),f=fixture(t,watchlist,config,{isBlocked:a=>a===B});
+  const fresh=new FreshDeposits({engine:f.engine,rules:config,rpc:()=>{throw Error('must not query');}});
+  const result=await fresh.filter([row(0),row(1,{usd:49999}),row(2,{from:A,to:C})]);
+  assert.equal(result.length,2);
+});
+
+test('TRON freshness checks both bounded histories, deduplicates hashes and permits gas funding', async t => {
+  const config=settings({}),f=fixture(t,watchlist,config),event=row(0,{chain:'TRON',from:tronFromHex('41'+'11'.repeat(20)),to:watchlist[2].address}),calls=[];
+  const fresh=new FreshDeposits({engine:f.engine,rules:config,request:async(route,params)=>{
+    calls.push([route,params]);return {success:true,data:route.endsWith('/trc20')?
+      [{transaction_id:event.hash,block_timestamp:event.at}]:
+      [{txID:event.hash,block_timestamp:event.at},{txID:'gas',block_timestamp:event.at-60000}]};
+  }});
+  assert.equal((await fresh.filter([event]))[0].freshApproved,true);
+  assert.equal(calls.length,2);assert.equal(calls[0][1].min_timestamp,0);assert.equal(calls[0][1].limit,11);
+  assert.equal(calls[1][1].contract_address,undefined);
+});
+
+test('failed freshness check cannot advance a scan cursor', async t => {
+  const f=ethFixture(t);f.feed.filterEvents=async()=>{throw Error('history unavailable');};
+  await assert.rejects(f.feed.poll(),/history unavailable/);
+  assert.equal(f.store.data.cursors.ETH,undefined);
 });

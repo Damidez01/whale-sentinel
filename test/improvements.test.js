@@ -14,6 +14,17 @@ function state(t) {
   return new DurableState(path.join(dir, 'telegram.json'));
 }
 function message(text, id = 1) { return { text, message_id: id, from: { id: 123 }, chat: { id: 123, type: 'private' } }; }
+
+test('blocking any counted exchange participant removes queued summaries even when another wallet is highlighted', async t => {
+  const s=state(t), sent=[];
+  const d=new Delivery(s,{send:async a=>{sent.push(a);},render:a=>a.body});
+  d.enqueue({alertId:'exchange:ETH:hot:out:1',wallet:B,countedWallets:[A,B],body:'summary'});
+  commandHandler(s,{chatId:'123'})(message('/block '+A));
+  assert.equal(s.data.queue.length,0);
+  assert.equal(d.enqueue({alertId:'exchange:ETH:hot:in:2',wallet:B,countedWallets:[A,B],body:'summary'}),false);
+  assert.equal(d.enqueue({alertId:'exchange:legacy',wallet:B,body:`[wallet](https://arkm.com/explorer/address/${A})`}),false);
+  await d.tick();assert.equal(sent.length,0);
+});
 test('private owner blocks persist across restart and unauthorized users cannot change exclusions', t => {
   const s = state(t), handle = commandHandler(s, { chatId: '123' });
   assert.equal(handle({ ...message(`/block ${A}`), from: { id: 999 } }), null);

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { normalizeWallet } = require('../utils/addresses');
+const { alertWallets } = require('../utils/alertWallets');
 
 class ExchangeStore {
   constructor(file) {
@@ -34,18 +35,35 @@ function settings(env = process.env) {
     confirmations: positive('EXCHANGE_ETH_CONFIRMATIONS', 12, true),
     maxBlocks: positive('EXCHANGE_ETH_MAX_BLOCKS', 25, true),
     maxPages: positive('EXCHANGE_TRON_MAX_PAGES', 20, true),
+    freshOnly: env.EXCHANGE_FRESH_ONLY !== 'false',
+    freshMaxTx: Math.min(100, positive('EXCHANGE_FRESH_MAX_TX', 10, true)),
+    freshMaxHours: positive('EXCHANGE_FRESH_MAX_HOURS', 48),
   };
 }
 const money = n => '$' + Math.round(n).toLocaleString('en-US');
 class ExchangeEngine {
-  constructor(store, wallets, rules, { ignoreDestination = () => false } = {}) {
+  constructor(store, wallets, rules, { ignoreDestination = () => false, isBlocked = () => false } = {}) {
     this.store = store; this.rules = rules;
     this.ignoreDestination = ignoreDestination;
+    this.isBlocked = isBlocked;
     this.wallets = wallets.map(w => ({ ...w, address: normalizeWallet(w.address) }));
     if (this.wallets.some(w => !w.address || !['ETH','TRON'].includes(w.chain))) throw Error('Invalid exchange watchlist');
   }
+  pruneBlocked(s) {
+    for (const [key, rows] of Object.entries(s.windows)) {
+      const kept = rows.filter(e => !this.isBlocked(e.from) && !this.isBlocked(e.to) &&
+        !(this.rules.freshOnly && key.endsWith(':in') && !e.freshApproved));
+      if (kept.length !== rows.length) {
+        s.windows[key] = kept;
+        delete s.notified[key]; // Allow a new threshold using only eligible rows.
+      }
+    }
+    s.pending = s.pending.filter(alert => !alertWallets(alert).some(a => this.isBlocked(a)) &&
+      !(this.rules.freshOnly && alert.alertId?.includes(':in:') && !alert.freshOnly));
+  }
   commit(events, cursorPatch = {}, healthPatch = {}) {
     this.store.update(s => {
+      this.pruneBlocked(s);
       const sorted = [...events].sort((a,b) => a.at - b.at || (a.order || 0) - (b.order || 0));
       for (const raw of sorted) {
         const e = { ...raw, from: normalizeWallet(raw.from), to: normalizeWallet(raw.to) };
@@ -53,10 +71,12 @@ class ExchangeEngine {
         if (e.usd < Math.min(this.rules.min, this.rules.fanoutMin)) continue;
         const id = `${e.chain}:${e.id}`;
         if (s.seen[id]) continue;
+        if (this.isBlocked(e.from) || this.isBlocked(e.to)) { s.seen[id] = e.at; continue; }
         for (const wallet of this.wallets.filter(w => w.chain === e.chain)) {
           const direction = e.to === wallet.address ? 'in' : e.from === wallet.address ? 'out' : null;
           if (!direction) continue;
           const accumulation = direction === 'in';
+          if (accumulation && this.rules.freshOnly && !e.freshApproved) continue;
           if (!accumulation && this.ignoreDestination(e.chain, e.to)) continue;
           const min = accumulation ? this.rules.min : this.rules.fanoutMin;
           if (e.usd < min) continue;
@@ -88,6 +108,8 @@ class ExchangeEngine {
           }
           const others = [...counterparties].filter(([address]) => address !== subject);
           s.pending.push({ chain: e.chain, wallet: subject, walletLink: true, txHash: e.hash,
+            countedWallets: [wallet.address, ...counterparties.keys()],
+            freshOnly: accumulation && this.rules.freshOnly,
             alertId: `exchange:${key}:${e.id}:${distinct}`,
             title: `${wallet.service} — ${accumulation ? 'Hot-wallet accumulation' : 'Hot-wallet fan-out'}`,
             body: [
@@ -96,6 +118,7 @@ class ExchangeEngine {
               accumulation ? `*${distinct} incoming txns in ${windowMs / 60000} min*` : `*${distinct} destinations in ${windowMs / 60000} min*`,
               `Total ${accumulation ? 'received' : 'sent'}: *${money(current.reduce((sum,x) => sum+x.usd, 0))}*`,
               `Each: ≥ ${money(min)}`,
+              ...(accumulation && this.rules.freshOnly ? [`Sources: ≤${this.rules.freshMaxTx} observed txns; ≤${this.rules.freshMaxHours}h history`] : []),
               `Assets: ${Object.entries(totals).map(([symbol,usd]) => `${symbol} ${money(usd)}`).join(', ')}`,
               '',
               `${accumulation ? 'Sources' : 'Destinations'}:`,
@@ -115,6 +138,7 @@ class ExchangeEngine {
     });
   }
   flush(sendAlert) {
+    this.store.update(s => this.pruneBlocked(s));
     while (this.store.data.pending.length) {
       const alert = this.store.data.pending[0];
       sendAlert(alert); // Telegram's durable queue must succeed before acknowledgement here.

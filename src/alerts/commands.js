@@ -1,4 +1,5 @@
 const { normalizeWallet } = require('../utils/addresses');
+const { alertWallets } = require('../utils/alertWallets');
 const HELP = '/block Address reason\n/unblock Address\n/mute Address 24h\n/blocked\nAccepts EVM (0x...) and TRON (T...) addresses.\nOr reply to a wallet alert with /block, /unblock or /mute 24h.\nBlocks suppress wallet alerts; they do not block blockchain transactions.';
 
 function commandHandler(state, { chatId, adminIds = [], now = Date.now } = {}) {
@@ -36,14 +37,14 @@ function commandHandler(state, { chatId, adminIds = [], now = Date.now } = {}) {
       if (command === 'unblock' || command === 'remove') delete s.blocked[address];
       else {
         s.blocked[address] = { until, reason: args.join(' ').slice(0, 200) || 'Manually excluded', by: uid, at: now() };
-        s.queue = s.queue.filter(x => normalizeWallet(x.alert.wallet) !== address);
+        s.queue = s.queue.filter(x => !alertWallets(x.alert).includes(address));
       }
       s.commands[id] = now();
       for (const [key,at] of Object.entries(s.commands)) if (at < now() - 7 * 86400000) delete s.commands[key];
     });
     return command === 'unblock' || command === 'remove' ?
       `Removed Telegram exclusion for ${address}. Built-in script exclusions still apply.` :
-      `${until ? 'Muted' : 'Blocked'} ${address}${until ? ' until ' + new Date(until).toISOString() : ''}. Saved. This suppresses alerts about this wallet, not transfers by other watched wallets to it.`;
+      `${until ? 'Muted' : 'Blocked'} ${address}${until ? ' until ' + new Date(until).toISOString() : ''}. Saved. Excluded from exchange inflow/fan-out counts and alerts. Other modules suppress alerts highlighting this wallet.`;
   };
 }
 module.exports = { commandHandler, HELP };

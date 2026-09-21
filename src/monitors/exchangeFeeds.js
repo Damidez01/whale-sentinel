@@ -11,8 +11,8 @@ const topic = a => '0x' + a.slice(2).padStart(64, '0');
 const word = /^0x[0-9a-f]{64}$/i;
 
 class EthereumExchangeFeed {
-  constructor({ engine, rpc, price, rules }) {
-    Object.assign(this, { engine, rpc, price, rules }); this.blocks = new Map(); this.latest = null;
+  constructor({ engine, rpc, price, rules, filterEvents = async events => events }) {
+    Object.assign(this, { engine, rpc, price, rules, filterEvents }); this.blocks = new Map(); this.latest = null;
     this.addresses = engine.wallets.filter(w => w.chain === 'ETH').map(w => w.address);
   }
   observe(block) {
@@ -74,7 +74,7 @@ class EthereumExchangeFeed {
         const receipt = await this.rpc('eth_getTransactionReceipt', [tx.hash]);
         if (!receipt || receipt.blockHash !== block.hash || receipt.transactionHash !== tx.hash || !['0x0','0x1'].includes(receipt.status)) throw Error('Exchange ETH receipt missing or mismatched');
         if (receipt.status !== '0x1') continue;
-        events.push({ id: tx.hash, hash: tx.hash, chain: 'ETH', symbol: 'ETH', from, to, usd, at, order: Number(BigInt(tx.transactionIndex || '0')) * 100000 });
+        events.push({ id: tx.hash, hash: tx.hash, chain: 'ETH', symbol: 'ETH', from, to, usd, at, blockNumber: number, order: Number(BigInt(tx.transactionIndex || '0')) * 100000 });
       }
       for (const log of logs.filter(l => Number(BigInt(l.blockNumber)) === number)) {
         if (log.removed || log.blockHash !== block.hash) throw Error('Exchange token log ancestry mismatch');
@@ -84,17 +84,17 @@ class EthereumExchangeFeed {
         const from = '0x' + log.topics[1].slice(-40), to = '0x' + log.topics[2].slice(-40);
         if (!this.addresses.includes(from.toLowerCase()) && !this.addresses.includes(to.toLowerCase())) throw Error('Token result outside watched wallets');
         const usd = await value(log.data, token.decimals, token.symbol);
-        events.push({ id: `${log.transactionHash}:${log.logIndex}`, hash: log.transactionHash, chain: 'ETH', symbol: token.symbol, from, to, usd, at,
+        events.push({ id: `${log.transactionHash}:${log.logIndex}`, hash: log.transactionHash, chain: 'ETH', symbol: token.symbol, from, to, usd, at, blockNumber: number,
           order: Number(BigInt(log.transactionIndex || '0')) * 100000 + Number(BigInt(log.logIndex)) + 1 });
       }
     }
     if (logs.some(l => Number(BigInt(l.blockNumber)) < start || Number(BigInt(l.blockNumber)) > end)) throw Error('Exchange logs outside requested range');
-    this.engine.commit(events, { ETH: { number: end, hash: parent } }, { ETH: { ok: true, block: end, lagBlocks: target - end, checkedAt: Date.now() } });
+    this.engine.commit(await this.filterEvents(events), { ETH: { number: end, hash: parent } }, { ETH: { ok: true, block: end, lagBlocks: target - end, checkedAt: Date.now() } });
   }
 }
 
 class TronExchangeFeed {
-  constructor({ engine, request, price, rules, now = Date.now }) { Object.assign(this, { engine, request, price, rules, now }); }
+  constructor({ engine, request, price, rules, now = Date.now, filterEvents = async events => events }) { Object.assign(this, { engine, request, price, rules, now, filterEvents }); }
   async pages(wallet, token, start, end) {
     let fingerprint; const rows = [], fingerprints = new Set();
     for (let page = 0; page < this.rules.maxPages; page++) {
@@ -153,7 +153,7 @@ class TronExchangeFeed {
         }
       }
     }
-    this.engine.commit(events, { TRON: { at: end } }, { TRON: { ok: true, through: end, checkedAt: now } });
+    this.engine.commit(await this.filterEvents(events), { TRON: { at: end } }, { TRON: { ok: true, through: end, checkedAt: now } });
   }
 }
 module.exports = { EthereumExchangeFeed, TronExchangeFeed, TOKENS, TRON_USDT, TRANSFER };

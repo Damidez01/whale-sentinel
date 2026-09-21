@@ -47,9 +47,20 @@ EXCHANGE_POLL_MS=120000
 EXCHANGE_ETH_CONFIRMATIONS=12
 EXCHANGE_ETH_MAX_BLOCKS=25
 EXCHANGE_TRON_MAX_PAGES=20
+EXCHANGE_FRESH_ONLY=true
+EXCHANGE_FRESH_MAX_TX=10
+EXCHANGE_FRESH_MAX_HOURS=48
 ```
 
 Use the existing `FANOUT_*` variables to adjust fan-out. Setting `EXCHANGE_WATCH_ENABLED=false` disables this dedicated module and restores the original generic accumulation/fan-out behavior for these addresses (including its built-in exclusions).
+
+Exchange inflows now require a short observed source history by default: at most 10 distinct observed transactions and earliest observed activity no more than 48 hours before the deposit. The original threshold remains three distinct deposits, each at least $50k, within 15 minutes. Sources can have unrelated original funders; no common-funder requirement is imposed. This is a filter for deposit-like wallets, not evidence of theft or proof the exchange owns the sender. Small gas payments count toward the 10-transaction allowance but do not count as qualifying deposits. Setting `EXCHANGE_FRESH_ONLY=false` restores the previous inflow eligibility.
+
+Checks run only for qualifying inflows. Ethereum checks sender code and outgoing nonce, plus bounded oldest-first incoming/outgoing asset-transfer history through the deposit block. TRON checks bounded native/account and token history through the deposit timestamp. Ethereum transfer history is not every possible transaction (for example, incoming zero-value contract calls may not be indexed); TRON internal transfers are not included. The age is first observed activity, not address generation time. Paginated/incomplete histories are not assumed fresh: pagination rejects the candidate conservatively; missing deposit indexing or unavailable providers retain the scan cursor for retry. No extra history queries are made for fan-out alone. New incoming windows start with verified deposits; old unchecked incoming windows are cleared on upgrade.
+
+Results are cached per source/deposit transaction and configuration on the volume for up to two days, capped at 10,000 entries. A qualifying Ethereum candidate can require two ordinary RPC reads and two Alchemy Transfers API calls (120 CU each for the transfer calls), plus verification/retries; TRON adds up to two account-history calls per candidate. This adds usage according to deposit volume and is not covered by the basic polling cost below. Alchemy Transfers API support is required for Ethereum freshness checks.
+
+Telegram blocks/mutes now exclude both endpoints from exchange inflow and fan-out counting. Active windows are pruned before the next rule evaluation/flush; queued exchange summaries involving any blocked counted wallet are discarded, including summaries that highlight a different wallet. Blocking does not retract Telegram messages already delivered. Unblocking does not replay pruned historical transfers. Other modules retain their existing behavior.
 
 ## Cost, timing and limits
 

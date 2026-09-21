@@ -2,6 +2,7 @@ const axios = require('axios');
 const path = require('path');
 const { ExchangeStore, ExchangeEngine, settings } = require('./exchangeCore');
 const { EthereumExchangeFeed, TronExchangeFeed } = require('./exchangeFeeds');
+const { FreshDeposits } = require('./exchangeFresh');
 const wallets = require('./exchange-wallets.json');
 const { getPrice } = require('../utils/prices');
 const { sendAlert, isBlocked } = require('../alerts/telegram');
@@ -81,19 +82,21 @@ function startExchangeMonitor() {
   started = true;
   const rules = settings();
   const store = new ExchangeStore(path.join(process.env.TELEGRAM_DATA_DIR || '/data', 'exchange-watch.json'));
-  const engine = new ExchangeEngine(store, wallets, rules, { ignoreDestination: (chain,address) =>
+  const engine = new ExchangeEngine(store, wallets, rules, { isBlocked, ignoreDestination: (chain,address) =>
     isBlocked(address) || (chain === 'ETH' && require('./evm').isNoisyDestination(address)) });
   const feeds = [], modules = [];
   const price = symbol => getPrice(symbol, { maxAgeMs: 15 * 60000 });
   if (process.env.ALCHEMY_ETH_WSS && !process.env.ALCHEMY_ETH_WSS.includes('YOUR_KEY')) {
-    ethereum = new EthereumExchangeFeed({ engine, rules, price,
-      rpc: makeRpc([process.env.ALCHEMY_ETH_WSS, process.env.ALCHEMY_ETH_FALLBACK]) });
+    const rpc = makeRpc([process.env.ALCHEMY_ETH_WSS, process.env.ALCHEMY_ETH_FALLBACK]);
+    // Separate cooldowns keep a history-provider failure from disabling log scans.
+    const freshRpc = makeRpc([process.env.ALCHEMY_ETH_WSS, process.env.ALCHEMY_ETH_FALLBACK]);
+    const fresh = new FreshDeposits({ engine, rules, rpc: freshRpc });
+    ethereum = new EthereumExchangeFeed({ engine, rules, price, rpc, filterEvents: events => fresh.filter(events) });
     feeds.push(['ETH', ethereum]); modules.push('Exchange watch — 3 ETH wallets (ETH/USDC/USDT/DAI)');
   }
   if (process.env.TRONGRID_API_KEY) {
     let nextRequestAt = 0;
-    const tron = new TronExchangeFeed({ engine, rules, price,
-      request: async (route, params) => {
+    const request = async (route, params) => {
         const wait = nextRequestAt - Date.now();
         if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
         nextRequestAt = Date.now() + 500;
@@ -101,7 +104,9 @@ function startExchangeMonitor() {
           params, headers: { 'TRON-PRO-API-KEY': process.env.TRONGRID_API_KEY }, timeout: 15000,
         });
         return data;
-      } });
+      };
+    const fresh = new FreshDeposits({ engine, rules, request });
+    const tron = new TronExchangeFeed({ engine, rules, price, request, filterEvents: events => fresh.filter(events) });
     feeds.push(['TRON', tron]); modules.push('Exchange watch — 2 TRON wallets (USDT/TRX)');
   } else logger.warn('[Exchange:TRON] Disabled until TRONGRID_API_KEY is configured');
   let busy = false;

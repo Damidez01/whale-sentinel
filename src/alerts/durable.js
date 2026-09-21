@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { normalizeWallet } = require('../utils/addresses');
+const { alertWallets } = require('../utils/alertWallets');
 
 class DurableState {
   constructor(file) {
@@ -38,7 +39,7 @@ class Delivery {
     this.nextSend = 0;
   }
   enqueue(alert) {
-    if (this.state.isBlocked(alert.wallet, this.now())) return false;
+    if (alertWallets(alert).some(a => this.state.isBlocked(a, this.now()))) return false;
     const id = alert.alertId || randomUUID();
     if (this.state.data.queue.some(x => x.id === id) || this.state.data.sent[id] > this.now()) return false;
     this.state.update(s => {
@@ -53,7 +54,7 @@ class Delivery {
     if (!item) return;
     this.busy = true;
     try {
-      if (this.state.isBlocked(item.alert.wallet, this.now())) {
+      if (alertWallets(item.alert).some(a => this.state.isBlocked(a, this.now()))) {
         this.state.update(s => { s.queue = s.queue.filter(x => x.id !== item.id); });
         return;
       }
