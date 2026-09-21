@@ -31,10 +31,10 @@ test('exchange alert links and block subject identify triggering counterparties 
         from:incoming?peer:hot,to:incoming?hot:peer})));
       const alert=f.store.data.pending[0];
       assert.equal(alert.wallet,peers[2]);
-      assert.equal(alert.explorerWallet,peers[2]);
-      assert.match(alert.body,incoming?/Source wallet \(triggering transfer\)/:/Destination wallet \(triggering transfer\)/);
-      for (const peer of peers) assert.ok(alert.body.includes(chain==='TRON'?`https://tronscan.org/#/address/${peer}`:`https://etherscan.io/address/${peer}`));
-      assert.ok(alert.body.includes(`Exchange hot wallet: \`${hot}\``));
+      assert.equal(alert.txHash,'link2');
+      assert.match(alert.body,incoming?/Source wallet:/ : /Destination wallet:/);
+      for (const peer of peers) assert.ok(alert.body.includes(`[${peer.slice(0,6)}...${peer.slice(-4)}](https://arkm.com/explorer/address/${peer})`));
+      assert.doesNotMatch(alert.body,/provided by you|triggering transfer|Exchange hot wallet|Window through|unverified/);
     }
   }
 });
@@ -49,7 +49,7 @@ test('exchange accumulation is three >=50k transfers in distinct transactions an
   const restarted = new ExchangeStore(f.store.file), engine = new ExchangeEngine(restarted, watchlist, rules);
   engine.commit([row(2, { symbol: 'DAI' })]);
   assert.equal(restarted.data.pending.length, 1);
-  assert.match(restarted.data.pending[0].body, /3 distinct incoming/);
+  assert.match(restarted.data.pending[0].body, /3 incoming txns/);
   assert.match(restarted.data.pending[0].body, /ETH.*USDT.*DAI/);
   engine.commit([row(2)]); assert.equal(restarted.data.pending.length, 1);
   engine.commit([row(3), row(4)]); assert.equal(restarted.data.pending.length, 2);
@@ -73,7 +73,7 @@ test('fanout requires three unique destinations and honors destination exclusion
     row(2, { from: A, to: C, usd: 10000 }), row(3, { from: A, to: D, usd: 10000 })]);
   assert.equal(f.store.data.pending.length, 0);
   f.engine.commit([row(4, { from: A, to: '0x' + '5'.repeat(40), usd: 10000 })]);
-  assert.equal(f.store.data.pending.length, 1); assert.match(f.store.data.pending[0].body, /3 unique destinations/);
+  assert.equal(f.store.data.pending.length, 1); assert.match(f.store.data.pending[0].body, /3 destinations/);
 });
 test('alert handoff failure keeps pending alert on disk for the next attempt', t => {
   const f = fixture(t); f.engine.commit([row(0),row(1),row(2)]);

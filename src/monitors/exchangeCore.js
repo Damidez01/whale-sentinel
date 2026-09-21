@@ -79,28 +79,28 @@ class ExchangeEngine {
           const totals = {};
           for (const row of current) totals[row.symbol] = (totals[row.symbol] || 0) + row.usd;
           const subject = accumulation ? e.from : e.to;
-          const addressUrl = address => e.chain === 'TRON' ? `https://tronscan.org/#/address/${address}` : `https://etherscan.io/address/${address}`;
+          const addressUrl = address => `https://arkm.com/explorer/address/${address}`;
+          const short = address => `${address.slice(0, 6)}...${address.slice(-4)}`;
           const counterparties = new Map();
           for (const row of current) {
             const address = accumulation ? row.from : row.to;
             counterparties.set(address, (counterparties.get(address) || 0) + row.usd);
           }
           const others = [...counterparties].filter(([address]) => address !== subject);
-          s.pending.push({ chain: e.chain, wallet: subject, walletLink: true, explorerWallet: subject, txHash: e.hash,
+          s.pending.push({ chain: e.chain, wallet: subject, walletLink: true, txHash: e.hash,
             alertId: `exchange:${key}:${e.id}:${distinct}`,
             title: `${wallet.service} — ${accumulation ? 'Hot-wallet accumulation' : 'Hot-wallet fan-out'}`,
             body: [
-              `Watchlist label: ${wallet.service} (provided by you)`,
-              `${accumulation ? 'Source' : 'Destination'} wallet (triggering transfer): \`${subject}\``,
-              accumulation ? `${distinct} distinct incoming transactions; qualifying transfers each ≥ ${money(min)}` : `${distinct} unique destinations; qualifying legs each ≥ ${money(min)}`,
-              `Window: ${windowMs / 60000} minutes; total ${money(current.reduce((sum,x) => sum+x.usd, 0))}`,
+              `${accumulation ? 'Source' : 'Destination'} wallet: \`${short(subject)}\``,
+              '',
+              accumulation ? `*${distinct} incoming txns in ${windowMs / 60000} min*` : `*${distinct} destinations in ${windowMs / 60000} min*`,
+              `Total ${accumulation ? 'received' : 'sent'}: *${money(current.reduce((sum,x) => sum+x.usd, 0))}*`,
+              `Each: ≥ ${money(min)}`,
               `Assets: ${Object.entries(totals).map(([symbol,usd]) => `${symbol} ${money(usd)}`).join(', ')}`,
-              `${accumulation ? 'Sources' : 'Destinations'} in this window:`,
-              ...[[subject, counterparties.get(subject)], ...others].slice(0, 8).map(([address,usd]) => `[${address}](${addressUrl(address)}) — ${money(usd)}`),
+              '',
+              `${accumulation ? 'Sources' : 'Destinations'}:`,
+              ...[[subject, counterparties.get(subject)], ...others].slice(0, 8).map(([address,usd]) => `[${short(address)}](${addressUrl(address)}) — ${money(usd)}`),
               ...(counterparties.size > 8 ? [`Plus ${counterparties.size - 8} other wallets in this window.`] : []),
-              `Exchange hot wallet: \`${wallet.address}\``,
-              `Window through: ${new Date(watermark).toISOString()}`,
-              'Exchange activity only; customer identity, stolen origin, and links between deposits and payouts are unverified.',
             ].join('\n') });
           s.notified[key] = { at: watermark, count: distinct };
         }
