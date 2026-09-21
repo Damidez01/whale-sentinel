@@ -40,6 +40,7 @@ Optional variables, already defaulted in code:
 
 ```text
 EXCHANGE_WATCH_ENABLED=true
+EXCHANGE_FANOUT_ENABLED=false
 EXCHANGE_ACCUM_MIN_USD=50000
 EXCHANGE_ACCUM_COUNT=3
 EXCHANGE_ACCUM_WIN_MIN=15
@@ -63,6 +64,8 @@ Results are cached per source/deposit transaction and configuration on the volum
 Telegram blocks/mutes now exclude both endpoints from exchange inflow and fan-out counting. Active windows are pruned before the next rule evaluation/flush; queued exchange summaries involving any blocked counted wallet are discarded, including summaries that highlight a different wallet. Blocking does not retract Telegram messages already delivered. Unblocking does not replay pruned historical transfers. Other modules retain their existing behavior.
 
 ## Cost, timing and limits
+
+Exchange fan-out is disabled by default. Only exchange inflows alert; the original general-wallet fan-out rule remains active. Pending exchange fan-out messages and windows are discarded on deployment. Ethereum omits the outgoing token-log query and TRON requests incoming history only. Set `EXCHANGE_FANOUT_ENABLED=true` only to explicitly restore exchange fan-out. The two-log-query baseline below applies when fan-out is enabled; with it disabled, there is one routine token-log query per Ethereum scan (before range splitting and retries).
 
 At a two-minute polling interval, two filtered Ethereum `eth_getLogs` calls per scan are about **2.592M Alchemy CU per 30 days** at 60 CU per call. A canonical cursor block check per scan adds roughly **432k CU/month** at 20 CU each. Relevant native receipts, uncached catch-up blocks, retries and failover add more. These figures are baseline estimates, not a monthly cap or live measurement. Original ETH scanning continues to consume its existing allowance. Increase `EXCHANGE_POLL_MS` for fewer routine queries and more delay.
 

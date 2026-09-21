@@ -9,6 +9,10 @@ const bot     = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 const state = new DurableState(path.join(process.env.TELEGRAM_DATA_DIR || '/data', 'telegram-state.json'));
+if (process.env.EXCHANGE_FANOUT_ENABLED !== 'true') {
+  state.update(s => { s.queue = s.queue.filter(item =>
+    !(item.alert.alertId?.startsWith('exchange:') && item.alert.alertId.includes(':out:'))); });
+}
 const handleCommand = commandHandler(state, { chatId: CHAT_ID,
   adminIds: (process.env.TELEGRAM_ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean) });
 let timer;

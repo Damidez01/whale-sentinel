@@ -12,7 +12,23 @@ const { FreshDeposits } = require('../src/monitors/exchangeFresh');
 const watchlist = require('../src/monitors/exchange-wallets.json');
 const A = normalizeWallet(watchlist[0].address), B = '0x' + '2'.repeat(40), C = '0x' + '3'.repeat(40), D = '0x' + '4'.repeat(40);
 const T = Date.now() - 300000;
-const rules = settings({ EXCHANGE_FRESH_ONLY: 'false' });
+const rules = settings({ EXCHANGE_FRESH_ONLY: 'false', EXCHANGE_FANOUT_ENABLED: 'true' });
+
+test('disabling exchange fan-out clears its backlog and keeps inflow alerts', t => {
+  const f=fixture(t);
+  f.engine.commit([B,C,D].map((to,i)=>row(i,{from:A,to})));
+  assert.equal(f.store.data.pending.length,1);
+  const config=settings({EXCHANGE_FRESH_ONLY:'false'});
+  assert.equal(config.fanoutEnabled,false);
+  const engine=new ExchangeEngine(f.store,watchlist,config);
+  engine.flush(()=>{throw Error('disabled fan-out delivered');});
+  assert.equal(f.store.data.pending.length,0);
+  engine.commit([B,C,D].map((to,i)=>row(i+3,{from:A,to})));
+  assert.equal(f.store.data.pending.length,0);
+  engine.commit([row(6),row(7),row(8)]);
+  assert.equal(f.store.data.pending.length,1);
+  assert.match(f.store.data.pending[0].title,/accumulation/);
+});
 const row = (i, extra = {}) => ({ chain: 'ETH', symbol: 'ETH', from: B, to: A, usd: 50000, id: 't' + i, hash: 't' + i, at: T + i * 60000, ...extra });
 function fixture(t, list = watchlist, config = rules, options) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exchange-test-'));

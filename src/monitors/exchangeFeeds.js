@@ -49,7 +49,9 @@ class EthereumExchangeFeed {
       blocks.push(block); parent = block.hash;
     }
     const logs = [];
-    for (const topics of [[TRANSFER, null, this.addresses.map(topic)], [TRANSFER, this.addresses.map(topic)]]) {
+    const filters = [[TRANSFER, null, this.addresses.map(topic)]];
+    if (this.rules.fanoutEnabled) filters.push([TRANSFER, this.addresses.map(topic)]);
+    for (const topics of filters) {
       const result = await this.rpc('eth_getLogs', [{ fromBlock: hex(start), toBlock: hex(end), address: Object.keys(TOKENS), topics }]);
       if (!Array.isArray(result)) throw Error('Invalid exchange token log response');
       logs.push(...result);
@@ -69,6 +71,7 @@ class EthereumExchangeFeed {
       for (const tx of block.transactions) {
         const from = normalizeWallet(tx.from), to = normalizeWallet(tx.to);
         if (!from || !to || (!this.addresses.includes(from) && !this.addresses.includes(to)) || BigInt(tx.value || '0') === 0n) continue;
+        if (!this.rules.fanoutEnabled && !this.addresses.includes(to)) continue;
         const usd = await value(tx.value, 18, 'ETH');
         if (usd < Math.min(this.rules.min, this.rules.fanoutMin)) continue;
         const receipt = await this.rpc('eth_getTransactionReceipt', [tx.hash]);
@@ -100,6 +103,7 @@ class TronExchangeFeed {
     for (let page = 0; page < this.rules.maxPages; page++) {
       const result = await this.request(`/v1/accounts/${wallet}/transactions${token ? '/trc20' : ''}`, {
         only_confirmed: true, limit: 200, order_by: 'block_timestamp,asc',
+        ...(!this.rules.fanoutEnabled ? { only_to: true } : {}),
         min_timestamp: start, max_timestamp: end, ...(token ? { contract_address: TRON_USDT } : {}), ...(fingerprint ? { fingerprint } : {}),
       });
       if (result?.success !== true || !Array.isArray(result.data)) throw Error('TronGrid did not return a valid success page');

@@ -136,7 +136,7 @@ function startExchangeMonitor() {
   }
   const run = () => poll().catch(() => logger.error('[Exchange] Unable to persist monitoring state'));
   run(); setInterval(run, rules.pollMs);
-  logger.info(`[Exchange] Started: accumulation >=${rules.min} x ${rules.count}/${rules.minutes}min; fan-out >=${rules.fanoutMin} x ${rules.fanoutCount} destinations/${rules.fanoutMinutes}min; polling ${rules.pollMs / 1000}s`);
+  logger.info(`[Exchange] Started: accumulation >=${rules.min} x ${rules.count}/${rules.minutes}min; fan-out ${rules.fanoutEnabled ? 'enabled' : 'disabled'}; polling ${rules.pollMs / 1000}s`);
   return modules;
 }
 module.exports = { startExchangeMonitor, observeEthereumBlock, makeRpc };

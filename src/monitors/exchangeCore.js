@@ -31,6 +31,7 @@ function settings(env = process.env) {
     minutes: positive('EXCHANGE_ACCUM_WIN_MIN', 15),
     fanoutMin: positive('FANOUT_LEG_USD', 10000), fanoutCount: positive('FANOUT_MIN_LEGS', 3, true),
     fanoutMinutes: positive('FANOUT_WIN_MIN', 15),
+    fanoutEnabled: env.EXCHANGE_FANOUT_ENABLED === 'true',
     pollMs: Math.max(15000, positive('EXCHANGE_POLL_MS', 120000, true)),
     confirmations: positive('EXCHANGE_ETH_CONFIRMATIONS', 12, true),
     maxBlocks: positive('EXCHANGE_ETH_MAX_BLOCKS', 25, true),
@@ -51,6 +52,9 @@ class ExchangeEngine {
   }
   pruneBlocked(s) {
     for (const [key, rows] of Object.entries(s.windows)) {
+      if (!this.rules.fanoutEnabled && key.endsWith(':out')) {
+        delete s.windows[key]; delete s.notified[key]; continue;
+      }
       const kept = rows.filter(e => !this.isBlocked(e.from) && !this.isBlocked(e.to) &&
         !(this.rules.freshOnly && key.endsWith(':in') && !e.freshApproved));
       if (kept.length !== rows.length) {
@@ -59,6 +63,7 @@ class ExchangeEngine {
       }
     }
     s.pending = s.pending.filter(alert => !alertWallets(alert).some(a => this.isBlocked(a)) &&
+      !(!this.rules.fanoutEnabled && alert.alertId?.includes(':out:')) &&
       !(this.rules.freshOnly && alert.alertId?.includes(':in:') && !alert.freshOnly));
   }
   commit(events, cursorPatch = {}, healthPatch = {}) {
@@ -75,6 +80,7 @@ class ExchangeEngine {
         for (const wallet of this.wallets.filter(w => w.chain === e.chain)) {
           const direction = e.to === wallet.address ? 'in' : e.from === wallet.address ? 'out' : null;
           if (!direction) continue;
+          if (direction === 'out' && !this.rules.fanoutEnabled) continue;
           const accumulation = direction === 'in';
           if (accumulation && this.rules.freshOnly && !e.freshApproved) continue;
           if (!accumulation && this.ignoreDestination(e.chain, e.to)) continue;
