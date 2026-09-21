@@ -30,7 +30,10 @@ function buildMessage(alert) {
   ];
 
   // Explorer link — per chain
-  if (alert.txHash) {
+  if (alert.explorerWallet && normalizeWallet(alert.explorerWallet) && ['ETH', 'TRON'].includes(alert.chain)) {
+    const url = alert.chain === 'TRON' ? `https://tronscan.org/#/address/${alert.explorerWallet}` : `https://etherscan.io/address/${alert.explorerWallet}`;
+    lines.push(`📎 [View on Explorer](${url})`);
+  } else if (alert.txHash) {
     const explorers = {
       ETH:  `https://etherscan.io/tx/${alert.txHash}`,
       BASE: `https://basescan.org/tx/${alert.txHash}`,

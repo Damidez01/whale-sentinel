@@ -140,8 +140,10 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
   const api = sandbox.module.exports;
   api.startTelegram();
   assert.deepEqual(Array.from(client.options.polling.params.allowed_updates), ['message', 'callback_query']);
-  api.sendAlert({ alertId: 'test', wallet: A, title: 'Test', body: 'Body', chain: 'ETH' });
+  api.sendAlert({ alertId: 'test', wallet: A, explorerWallet: A, walletLink: true, txHash: 'trigger-tx', title: 'Test', body: 'Body', chain: 'ETH' });
   await tick();
+  assert.ok(sent[0].text.includes(`[View on Explorer](https://etherscan.io/address/${A})`));
+  assert.ok(!sent[0].text.includes('/tx/trigger-tx'));
   assert.equal(sent[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'block-wallet');
   handlers.callback_query({ id: 'evil', data: 'block-wallet', from: { id: 999 }, message: { message_id: 1, chat: { id: 123, type: 'private' } } });
   assert.equal(api.isBlocked(A), false);

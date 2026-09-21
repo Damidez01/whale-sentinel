@@ -19,6 +19,25 @@ function fixture(t, list = watchlist, config = rules, options) {
   const store = new ExchangeStore(path.join(dir, 'exchange.json'));
   return { store, dir, engine: new ExchangeEngine(store, list, config, options) };
 }
+
+test('exchange alert links and block subject identify triggering counterparties on ETH and TRON', t => {
+  for (const chain of ['ETH','TRON']) {
+    const wallet=watchlist.find(w=>w.chain===chain);
+    const hot=normalizeWallet(wallet.address);
+    const peers=chain==='ETH'?[B,C,D]:['11','22','33'].map(x=>tronFromHex('41'+x.repeat(20)));
+    for (const incoming of [false,true]) {
+      const f=fixture(t,[wallet]);
+      f.engine.commit(peers.map((peer,i)=>({chain,symbol:'USDT',id:'link'+i,hash:'link'+i,at:T+i*1000,usd:50000,
+        from:incoming?peer:hot,to:incoming?hot:peer})));
+      const alert=f.store.data.pending[0];
+      assert.equal(alert.wallet,peers[2]);
+      assert.equal(alert.explorerWallet,peers[2]);
+      assert.match(alert.body,incoming?/Source wallet \(triggering transfer\)/:/Destination wallet \(triggering transfer\)/);
+      for (const peer of peers) assert.ok(alert.body.includes(chain==='TRON'?`https://tronscan.org/#/address/${peer}`:`https://etherscan.io/address/${peer}`));
+      assert.ok(alert.body.includes(`Exchange hot wallet: \`${hot}\``));
+    }
+  }
+});
 test('all five supplied wallets validate; TRON checksum and letter case are enforced', () => {
   assert.ok(watchlist.every(w => normalizeWallet(w.address)));
   assert.equal(normalizeWallet(watchlist[2].address.toLowerCase()), null);
