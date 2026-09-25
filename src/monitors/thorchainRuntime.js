@@ -32,7 +32,7 @@ function startTHORChainMonitor() {
   let busy=false;
   const poll=async()=>{
     if(busy)return;busy=true;
-    try {await monitor.poll();logger.info('[THOR] Scan succeeded',{through:store.data.cursors.THOR?.at,pendingSwaps:Object.keys(store.data.thorPending||{}).length});}
+    try {await monitor.poll();logger.info('[THOR] Scan succeeded',{through:store.data.cursors.THOR?.at,pendingSwaps:Object.keys(store.data.thorPending||{}).length,...monitor.lastScan});}
     catch(err){logger.warn(`[THOR] ${err.isAxiosError?'Provider request failed':err.message}; saved progress retained`);}
     finally{busy=false;}
   };

@@ -31,12 +31,14 @@ class ThorMonitor {
   async collect(start,end) {
     const actions=[],tokens=new Set();let token;
     for(let page=0;page<this.rules.maxPages;page++) {
-      const data=await this.request({type:'swap',limit:50,fromTimestamp:Math.floor(start/1000)-1,
+      // fromTimestamp reverses Midgard's lookup order. Walk backwards from the
+      // upper bound using only nextPageToken, stopping at the lower bound.
+      const data=await this.request({type:'swap',asset:'BTC.BTC',limit:50,
         ...(token?{nextPageToken:token}:{timestamp:Math.ceil(end/1000)+1})});
       if(!Array.isArray(data?.actions))throw Error('Invalid Midgard actions');
       actions.push(...data.actions.filter(a=>{const at=timestamp(a);return at>=start&&at<=end;}));
       const next=data.meta?.nextPageToken;
-      if(!data.actions.length||!next)return actions;
+      if(!data.actions.length||!next||data.actions.some(a=>timestamp(a)<start))return actions;
       if(tokens.has(next))throw Error('Midgard pagination repeated');tokens.add(next);token=next;
     }
     throw Error('Midgard page limit reached; increase THORCHAIN_MAX_PAGES');
@@ -68,6 +70,11 @@ class ThorMonitor {
   }
   async poll() {
     this.flush();
+    // One-time bounded recovery for the old forward/backward pagination bug.
+    if(this.store.data.thorScanVersion!==2) this.store.update(s=>{
+      if(s.cursors.THOR?.at)s.cursors.THOR.at=Math.max(0,s.cursors.THOR.at-60*60000);
+      s.thorScanVersion=2;
+    });
     const previous=this.store.data.cursors.THOR?.at??this.now()-5*60000;
     const end=Math.min(this.now()-30000,previous+10*60000),start=Math.max(0,previous-2*60000);
     if(end<=previous)return;
@@ -85,6 +92,7 @@ class ThorMonitor {
     const parsed=[];
     for(const [id,a] of unique)if(!this.store.data.seen[id])parsed.push({id,a,event:await this.parse(a)});
     parsed.sort((a,b)=>timestamp(a.a)-timestamp(b.a));
+    const stats={scanned:unique.size,pendingRetried:retried.length,completed:0,qualifying:0,blocked:0,queued:0,minSwapUsd:this.rules.min};
     this.store.update(s=>{
       s.thorPending ||= {};
       for(const id of retried)if(s.thorPending[id])s.thorPending[id].checkedAt=this.now();
@@ -94,7 +102,10 @@ class ThorMonitor {
           if(Object.keys(s.thorPending).length>10000)throw Error('THOR pending limit reached');continue;
         }
         delete s.thorPending[id];s.seen[id]=timestamp(a);
-        if(!e||this.isBlocked(e.wallet))continue;
+        if(a.status==='success')stats.completed++;
+        if(!e)continue;
+        stats.qualifying++;
+        if(this.isBlocked(e.wallet)){stats.blocked++;continue;}
         const key=e.direction+':'+e.wallet,watermark=Math.max(e.at,...(s.windows[key]||[]).map(r=>r.at));
         const rows=(s.windows[key]||[]).filter(r=>r.at>watermark-this.rules.minutes*60000);
         if(e.at>watermark-this.rules.minutes*60000)rows.push(e);s.windows[key]=rows;
@@ -105,12 +116,14 @@ class ThorMonitor {
             ...(burst?[`*${rows.length} swaps in ${this.rules.minutes} min*`,`Total: *${money(rows.reduce((n,r)=>n+r.usd,0))}*`]:[]),
             `Swap: ${e.amount.toFixed(4)} ${e.asset} → ${e.outAmount.toFixed(4)} ${e.outAsset}`,`Value: *${money(e.usd)}*`].join('\n')});
         if(s.pending.length>10000)throw Error('THOR alert backlog full');
+        stats.queued++;
       }
       s.cursors.THOR={at:end};
       for(const [id,at] of Object.entries(s.seen))if(at<this.now()-30*86400000)delete s.seen[id];
       for(const [key,rows] of Object.entries(s.windows))s.windows[key]=rows.filter(r=>r.at>this.now()-2*86400000&&!this.isBlocked(r.wallet));
     });
     this.flush();
+    this.lastScan=stats;
   }
 }
 module.exports={ThorMonitor,thorSettings,symbol};

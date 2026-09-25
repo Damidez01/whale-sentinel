@@ -40,7 +40,28 @@ test('THOR pagination uses nextPageToken and processes oldest first for burst',a
   const calls=[];const f=fixture(t,{request:async p=>{calls.push(p);return p.nextPageToken?
     {actions:[swap('A',NOW-180000),swap('B',NOW-120000)]}:{actions:[swap('C')],meta:{nextPageToken:'123'}};}});
   await f.monitor.poll();assert.equal(calls.length,2);assert.equal(calls[1].timestamp,undefined);
+  assert.ok(calls.every(p=>p.fromTimestamp===undefined&&p.asset==='BTC.BTC'));
   assert.equal(f.sent.length,3);assert.match(f.sent[2].title,/Burst/);assert.match(f.sent[2].body,/3 swaps/);
+});
+
+test('backward pagination reaches the lower boundary without mixing forward filters',async t=>{
+  const calls=[];
+  const f=fixture(t,{request:async p=>{
+    calls.push(p);assert.equal(p.fromTimestamp,undefined);
+    if(!p.nextPageToken)return {actions:[swap('C')],meta:{nextPageToken:'2'}};
+    if(p.nextPageToken==='2')return {actions:[swap('B',NOW-120000)],meta:{nextPageToken:'3'}};
+    return {actions:[swap('A',NOW-180000),swap('OLD',NOW-3600000)],meta:{nextPageToken:'4'}};
+  }});
+  await f.monitor.poll();assert.equal(calls.length,3);assert.equal(f.sent.length,3);
+  assert.equal(f.monitor.lastScan.qualifying,3);assert.equal(f.monitor.lastScan.queued,3);
+});
+
+test('old scan cursor is rewound once, without deleting delivered-swap dedup',async t=>{
+  const f=fixture(t,{request:async()=>({actions:[]})});
+  f.store.update(s=>{s.cursors.THOR={at:NOW-60000};s.seen.DELIVERED=NOW-60000;});
+  await f.monitor.poll();const at=f.store.data.cursors.THOR.at;
+  assert.equal(at,NOW-60000-50*60000);assert.equal(f.store.data.seen.DELIVERED,NOW-60000);
+  await f.monitor.poll();assert.equal(f.store.data.cursors.THOR.at,at+10*60000);
 });
 test('pending swap is rechecked after cursor passes it and survives restart',async t=>{
   const f=fixture(t,{request:async()=>({actions:[swap('A',NOW-60000,{status:'pending',out:[]})]})});
