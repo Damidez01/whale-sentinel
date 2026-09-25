@@ -51,7 +51,7 @@ function buildMessage(alert) {
   if (alert.walletLink && alert.wallet) {
     if (alert.chain === 'TRON') {
       lines.push(`🔍 [Wallet on Tronscan](https://tronscan.org/#/address/${alert.wallet})`);
-    } else if (alert.chain === 'THOR') {
+    } else if (alert.chain === 'THOR' && alert.walletChain !== 'ETH') {
       lines.push(`🔍 [Wallet on THORChain](https://thorchain.net/address/${alert.wallet})`);
     } else {
       lines.push(`🔍 [Wallet on Etherscan](https://etherscan.io/address/${alert.wallet})`);

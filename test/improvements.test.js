@@ -147,8 +147,11 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
       if (name === '../utils/addresses') return require('../src/utils/addresses');
       return { warn() {}, error() {}, info() {} };
     } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8'), sandbox);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8') + '\nmodule.exports.buildMessage = buildMessage;', sandbox);
   const api = sandbox.module.exports;
+  const thorText = api.buildMessage({chain:'THOR',walletChain:'ETH',wallet:A,walletLink:true,txHash:'thor-tx',title:'THOR swap',body:'Swap'});
+  assert.ok(thorText.includes('[View on Explorer](https://thorchain.net/tx/thor-tx)'));
+  assert.ok(thorText.includes(`[Wallet on Etherscan](https://etherscan.io/address/${A})`));
   api.startTelegram();
   assert.deepEqual(Array.from(client.options.polling.params.allowed_updates), ['message', 'callback_query']);
   api.sendAlert({ alertId: 'test', wallet: A, explorerWallet: A, walletLink: true, txHash: 'trigger-tx', title: 'Test', body: 'Body', chain: 'ETH' });

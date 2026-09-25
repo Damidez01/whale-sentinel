@@ -37,8 +37,9 @@ async function main() {
   }
 
   // THORChain
-// startTHORChainMonitor();
-  // Remains disabled; do not advertise it as an active module.
+  try {
+    if (startTHORChainMonitor()) modules.push('THORChain — ETH/stables ↔ BTC');
+  } catch { logger.error('[THOR] Could not start; inspect THORChain configuration and thorchain-state.json'); }
 
   try { modules.push(...startExchangeMonitor()); }
   catch { logger.error('[Exchange] Watchlist could not start; inspect configuration and exchange-watch.json. Original monitoring continues.'); }

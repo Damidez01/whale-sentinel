@@ -166,10 +166,10 @@ test('Telegram block/unblock preserves TRON case and persists its exclusion', t 
 
 test('TRON filters indexer boundary records locally for native and token history', async t => {
   const address=tronFromHex('41'+'22'.repeat(20)), from=tronFromHex('41'+'11'.repeat(20));
-  const now=1789940931750, cursor=1789940781280, start=cursor-120000, end=now-30000;
+  const now=Math.floor(Date.now()/1000)*1000+750, cursor=now-150470, start=cursor-120000, end=now-30000;
   const f=fixture(t,[{chain:'TRON',service:'Fixture',address}]);
   f.store.update(s=>{s.cursors.TRON={at:cursor};});
-  // Mirrors the observed response: 1789940661000 is 280ms before the filter.
+  // Mirrors the observed response: a whole-second timestamp 280ms before the filter.
   const times=[Math.floor(start/1000)*1000, start, start+1000, end, end+250];
   const native=times.map((at,i)=>({txID:'n'+i,block_timestamp:at,ret:[{contractRet:'SUCCESS'}],raw_data:{contract:[{type:'TransferContract',parameter:{value:{owner_address:'41'+'11'.repeat(20),to_address:'41'+'22'.repeat(20),amount:50000000000}}}]}}));
   const tokens=times.map((at,i)=>({transaction_id:'t'+i,block_timestamp:at,type:'Transfer',token_info:{address:TRON_USDT},from,to:address,value:'50000000000'}));

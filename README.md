@@ -19,12 +19,12 @@ Pools watched:
 - `0x910cbd523d972eb0a6f4cae4618ad62622b39dbf` — 10 ETH pool
 
 ### 2. THORChain Monitor
-Midgard polling every 15 seconds.
+Midgard polling every 60 seconds, with persistent progress, pagination and pending-swap retries. Enabled by default; see [THORCHAIN.md](THORCHAIN.md) for settings.
 
 | Alert | Trigger |
 |---|---|
-| 🟠 HIGH — Large Swap | ETH/stables → BTC or BTC → ETH/stables > $500K |
-| 🚨 CRITICAL — Burst | 3+ swaps same wallet in 30 min |
+| Large Swap | Ethereum ETH/WETH/USDT/USDC/DAI ↔ native BTC, ≥ $500K |
+| Burst | 3+ qualifying swaps, same Ethereum wallet and direction, in 30 min |
 
 ### 3. EVM Monitor
 Pending transaction stream on ETH, Base, Arbitrum.
