@@ -7,6 +7,7 @@ const { startEVMMonitor }       = require('./monitors/evm');
 const { startChainflipMonitor } = require('./monitors/chainflip');
 const { startTokenMonitor }     = require('./monitors/tokens');
 const { startExchangeMonitor } = require('./monitors/exchangeMonitor');
+const { startHyperunitMonitor } = require('./monitors/hyperunit');
 const { sendStartup, startTelegram } = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
 const logger = require('./utils/logger');
@@ -43,6 +44,10 @@ async function main() {
 
   try { modules.push(...startExchangeMonitor()); }
   catch { logger.error('[Exchange] Watchlist could not start; inspect configuration and exchange-watch.json. Original monitoring continues.'); }
+
+  try {
+    if (startHyperunitMonitor()) modules.push('Hyperunit — BTC/ETH deposits + accumulation');
+  } catch { logger.error('[UNIT] Could not start; inspect Hyperunit configuration and hyperunit-state.json'); }
 
   // EVM chains
   startEVMMonitor();

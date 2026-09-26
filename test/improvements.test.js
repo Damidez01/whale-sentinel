@@ -149,6 +149,9 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
     } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8') + '\nmodule.exports.buildMessage = buildMessage;', sandbox);
   const api = sandbox.module.exports;
+  const unitText = api.buildMessage({chain:'UNIT',wallet:A,walletLink:true,txHash:'unit-tx',title:'Unit deposit',body:'Deposit'});
+  assert.ok(unitText.includes('[View on Explorer](https://app.hyperliquid.xyz/explorer/transaction/unit-tx)'));
+  assert.ok(unitText.includes(`[Account on Hyperliquid](https://app.hyperliquid.xyz/explorer/address/${A})`));
   const thorText = api.buildMessage({chain:'THOR',walletChain:'ETH',wallet:A,walletLink:true,txHash:'thor-tx',title:'THOR swap',body:'Swap'});
   assert.ok(thorText.includes('[View on Explorer](https://thorchain.net/tx/thor-tx)'));
   assert.ok(thorText.includes(`[Wallet on Etherscan](https://etherscan.io/address/${A})`));

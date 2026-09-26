@@ -41,6 +41,7 @@ function buildMessage(alert) {
       ARB:  `https://arbiscan.io/tx/${alert.txHash}`,
       THOR: `https://thorchain.net/tx/${alert.txHash}`,
       TRON: `https://tronscan.org/#/transaction/${alert.txHash}`,
+      UNIT: `https://app.hyperliquid.xyz/explorer/transaction/${alert.txHash}`,
     };
     if (explorers[alert.chain]) {
       lines.push(`📎 [View on Explorer](${explorers[alert.chain]})`);
@@ -49,7 +50,9 @@ function buildMessage(alert) {
 
   // Wallet link — Etherscan for EVM, THORChain explorer for THOR
   if (alert.walletLink && alert.wallet) {
-    if (alert.chain === 'TRON') {
+    if (alert.chain === 'UNIT') {
+      lines.push(`🔍 [Account on Hyperliquid](https://app.hyperliquid.xyz/explorer/address/${alert.wallet})`);
+    } else if (alert.chain === 'TRON') {
       lines.push(`🔍 [Wallet on Tronscan](https://tronscan.org/#/address/${alert.wallet})`);
     } else if (alert.chain === 'THOR' && alert.walletChain !== 'ETH') {
       lines.push(`🔍 [Wallet on THORChain](https://thorchain.net/address/${alert.wallet})`);

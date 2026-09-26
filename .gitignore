@@ -8,3 +8,5 @@ data/exchange-watch.json
 data/exchange-watch.json.tmp
 data/thorchain-state.json
 data/thorchain-state.json.tmp
+data/hyperunit-state.json
+data/hyperunit-state.json.tmp
