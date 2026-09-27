@@ -35,7 +35,7 @@ function buildMessage(alert) {
 
   // Explorer link — per chain
   if (alert.chain === 'UNIT' && alert.wallet) {
-    lines.push(`📎 [View on Explorer](https://explorer.hyperunit.xyz/address/${alert.wallet})`);
+    lines.push(`📎 [View on Explorer](https://explorer.hyperunit.xyz/addresses/${alert.wallet})`);
   } else if (alert.txHash) {
     const explorers = {
       ETH:  `https://etherscan.io/tx/${alert.txHash}`,
