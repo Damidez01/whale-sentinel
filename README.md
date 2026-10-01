@@ -2,6 +2,23 @@
 
 Crypto incident detection system. Focuses on confirmed suspicious patterns — not noise.
 
+## Restarts and alert freshness
+
+The bot monitors recent activity rather than replaying days of missed transfers.
+`ALERT_MAX_AGE_MIN` defaults to `30` (must be a positive number). Chainflip,
+THORChain, Hyperunit and exchange monitors suppress events older than this limit.
+Time-based scanners clamp old saved positions to this recent window; an Ethereum
+exchange scanner with a stale saved block resumes after the latest confirmed block.
+Chainflip resolves a recent block before scanning, including on a fresh deployment.
+
+Telegram drops expired queued messages before delivery, including after a restart
+or rate-limit delay. New monitored alerts carry the original event time; legacy
+Telegram entries expire using their saved enqueue time. Legacy Chainflip, THORChain,
+Hyperunit and exchange alerts without an event timestamp are discarded from both
+monitor and Telegram queues because their freshness cannot be verified.
+Wallet blocks and deduplication records are preserved. No Railway state-file deletion
+is required. Alerts with event timestamps display event time separately from send time.
+
 ## Modules
 
 ### 1. Tornado Cash Monitor

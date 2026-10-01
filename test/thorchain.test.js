@@ -56,18 +56,18 @@ test('backward pagination reaches the lower boundary without mixing forward filt
   assert.equal(f.monitor.lastScan.qualifying,3);assert.equal(f.monitor.lastScan.queued,3);
 });
 
-test('old scan cursor is rewound once, without deleting delivered-swap dedup',async t=>{
+test('old pagination recovery is bounded by freshness without deleting delivered-swap dedup',async t=>{
   const f=fixture(t,{request:async()=>({actions:[]})});
   f.store.update(s=>{s.cursors.THOR={at:NOW-60000};s.seen.DELIVERED=NOW-60000;});
   await f.monitor.poll();const at=f.store.data.cursors.THOR.at;
-  assert.equal(at,NOW-60000-50*60000);assert.equal(f.store.data.seen.DELIVERED,NOW-60000);
+  assert.equal(at,NOW-20*60000);assert.equal(f.store.data.seen.DELIVERED,NOW-60000);
   await f.monitor.poll();assert.equal(f.store.data.cursors.THOR.at,at+10*60000);
 });
 test('pending swap is rechecked after cursor passes it and survives restart',async t=>{
   const f=fixture(t,{request:async()=>({actions:[swap('A',NOW-60000,{status:'pending',out:[]})]})});
   await f.monitor.poll();assert.equal(f.sent.length,0);assert.ok(f.store.data.thorPending.A);
   const store=new ExchangeStore(f.store.file),sent=[];
-  const monitor=new ThorMonitor({store,rules:thorSettings({}),now:()=>NOW+3600000,price:async()=>3000,sendAlert:a=>sent.push(a),
+  const monitor=new ThorMonitor({store,rules:thorSettings({}),now:()=>NOW+600000,price:async()=>3000,sendAlert:a=>sent.push(a),
     request:async p=>({actions:p.txid?[swap('A')]:[]})});
   await monitor.poll();assert.equal(sent.length,1);assert.equal(store.data.thorPending.A,undefined);
   await monitor.poll();assert.equal(sent.length,1);

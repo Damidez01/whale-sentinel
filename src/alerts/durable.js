@@ -3,6 +3,7 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const { normalizeWallet } = require('../utils/addresses');
 const { alertWallets } = require('../utils/alertWallets');
+const { freshAlert } = require('../utils/freshness');
 
 class DurableState {
   constructor(file) {
@@ -39,6 +40,7 @@ class Delivery {
     this.nextSend = 0;
   }
   enqueue(alert) {
+    if (!freshAlert(alert, this.now(), this.now())) return false;
     if (alertWallets(alert).some(a => this.state.isBlocked(a, this.now()))) return false;
     const id = alert.alertId || randomUUID();
     if (this.state.data.queue.some(x => x.id === id) || this.state.data.sent[id] > this.now()) return false;
@@ -50,6 +52,11 @@ class Delivery {
   }
   async tick() {
     if (this.busy || this.now() < this.nextSend) return;
+    // Also expire legacy queue entries by their original enqueue time. Never
+    // renew their age on restart or while waiting for a rate-limit retry.
+    if (this.state.data.queue.some(x => !freshAlert(x.alert, this.now(), x.at))) {
+      this.state.update(s => { s.queue = s.queue.filter(x => freshAlert(x.alert, this.now(), x.at)); });
+    }
     const item = this.state.data.queue.find(x => x.nextAttempt <= this.now());
     if (!item) return;
     this.busy = true;

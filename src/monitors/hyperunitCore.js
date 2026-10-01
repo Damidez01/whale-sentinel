@@ -1,3 +1,4 @@
+const { cutoff, isFresh, freshAlert } = require('../utils/freshness');
 const TREASURIES = [
   { asset: 'btc', token: 'UBTC', chain: 'bitcoin', address: '0x574bafce69d9411f662a433896e74e4f153096fa' },
   { asset: 'eth', token: 'UETH', chain: 'ethereum', address: '0x8dafbe89302656a7df43c470e9ebcb4c540835c0' },
@@ -67,7 +68,7 @@ class UnitMonitor {
   }
   async flush() {
     for (const alert of [...this.store.data.pending]) {
-      if (!this.isBlocked(alert.wallet)) await this.sendAlert(alert);
+      if (freshAlert(alert, this.now()) && !this.isBlocked(alert.wallet)) await this.sendAlert(alert);
       this.store.update(s => { s.pending = s.pending.filter(a => a.alertId !== alert.alertId); });
     }
   }
@@ -77,6 +78,7 @@ class UnitMonitor {
       const candidates = Object.values(s.unitCandidates).sort((a,b) => a.at - b.at || a.key.localeCompare(b.key));
       const held = new Set();
       for (const e of candidates) {
+        if (!isFresh(e.at, this.now())) { delete s.unitCandidates[e.key]; continue; }
         if (this.isBlocked(e.wallet)) {
           delete s.windows[e.wallet]; delete s.unitCandidates[e.key];
           continue;
@@ -94,7 +96,7 @@ class UnitMonitor {
         const short = `${e.wallet.slice(0,6)}...${e.wallet.slice(-4)}`;
         const amounts = [...new Set(rows.map(r => r.asset))].map(asset =>
           `${asset.toUpperCase()} ${money(rows.filter(r => r.asset === asset).reduce((sum,r) => sum + r.usd, 0))}`).join(' + ');
-        s.pending.push({ alertId: `hyperunit:${e.depositId}`, chain: 'UNIT', wallet: e.wallet,
+        s.pending.push({ eventAt: e.at, alertId: `hyperunit:${e.depositId}`, chain: 'UNIT', wallet: e.wallet,
           walletLink: true, txHash: e.hash,
           title: accumulation ? 'Hyperunit — Deposit accumulation' : 'Hyperunit — Large deposit',
           body: `Receiving account: ${short}\n\n` + (accumulation ?
@@ -118,7 +120,10 @@ class UnitMonitor {
   }
   async poll() {
     await this.flush();
-    const now = this.now(), start = this.store.data.cursors.UNIT?.at ?? now - 15 * 60000;
+    const now = this.now(), start = Math.max(cutoff(now), this.store.data.cursors.UNIT?.at ?? now - 15 * 60000);
+    this.store.update(s => {
+      for (const [key, e] of Object.entries(s.unitCandidates)) if (!isFresh(e.at, now)) delete s.unitCandidates[key];
+    });
     const end = Math.min(now - 30000, start + 5 * 60000);
     let discovered = 0, matched = 0, lookupErrors = 0;
     if (end >= start && Object.keys(this.store.data.unitCandidates).length < 2000) {

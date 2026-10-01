@@ -4,6 +4,7 @@ const { shortAddr } = require('../intelligence/flagged');
 const { sendAlert } = require('../alerts/telegram');
 const { getPrice, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
+const { cutoff, isFresh } = require('../utils/freshness');
 
 const VAULT         = '0xf5e10380213880111522dd0efd3dbb45b9f62bcc';
 const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY;
@@ -15,6 +16,26 @@ const POLL_MS       = 30_000;
 // ── Block cursor — persisted so restarts don't re-alert ──────
 // On startup we restore from store; on each processed tx we advance it.
 let lastSeenBlock = 0;
+let floorCheckedAt = 0;
+let polling = false;
+
+async function skipBacklog() {
+  if (floorCheckedAt && Date.now() - floorCheckedAt < 60000) return;
+  const { data } = await axios.get('https://api.etherscan.io/v2/api', {
+    params: { chainid: 1, module: 'block', action: 'getblocknobytime',
+      timestamp: Math.floor(cutoff() / 1000), closest: 'before', apikey: ETHERSCAN_KEY },
+    timeout: 15000,
+  });
+  const floor = Number(data?.result);
+  if (data?.status !== '1' || !Number.isSafeInteger(floor) || floor <= 0) {
+    throw Error('Cannot resolve recent Chainflip block; scan deferred');
+  }
+  if (lastSeenBlock < floor - 1) {
+    logger.info(`[CF] Skipping old backlog; resuming near block ${floor}`);
+    advanceCursor(floor - 1);
+  }
+  floorCheckedAt = Date.now();
+}
 
 function restoreCursor() {
   const saved = getKey('cf:lastBlock');
@@ -73,6 +94,8 @@ async function fetchVaultTxs() {
 
 async function processTx(tx) {
   try {
+    const eventAt = Number(tx.timeStamp) * 1000;
+    if (!isFresh(eventAt)) { advanceCursor(tx.blockNumber); return; }
     const isInflow  = tx.to?.toLowerCase()   === VAULT;
     const isOutflow = tx.from?.toLowerCase() === VAULT;
 
@@ -108,6 +131,7 @@ async function processTx(tx) {
       const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
       sendAlert({
+        eventAt,
         chain: 'ETH',
         title: '🚨 CRITICAL — Chainflip Vault Burst',
         alertId: `cf:burst:${direction.wallet}:${burstCount}`,
@@ -127,6 +151,7 @@ async function processTx(tx) {
       });
     } else {
       sendAlert({
+        eventAt,
         chain: 'ETH',
         title: `🟠 HIGH — Chainflip Vault ${isOutflow ? 'Egress' : 'Deposit'}`,
         alertId: `cf:single:${tx.hash}`,
@@ -158,23 +183,30 @@ async function processTx(tx) {
 // ── Poll loop ─────────────────────────────────────────────────
 
 async function poll() {
-  const { inflows, outflows } = await fetchVaultTxs();
+  if (polling) return;
+  polling = true;
+  try {
+    await skipBacklog();
+    const { inflows, outflows } = await fetchVaultTxs();
 
-  // Process inflows (txlist) — ETH sent TO vault
-  // Filter: only where vault is the recipient and value > 0
-  const newInflows = inflows
-    .filter(tx => tx.to?.toLowerCase() === VAULT && Number(tx.value) > 0)
-    .sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber));
+    // Process inflows (txlist) — ETH sent TO vault
+    // Filter: only where vault is the recipient and value > 0
+    const newInflows = inflows
+      .filter(tx => tx.to?.toLowerCase() === VAULT && Number(tx.value) > 0)
+      .sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber));
 
-  // Process outflows (txlistinternal) — ETH sent FROM vault to recipient
-  // Filter: only where vault is the sender and value > 0
-  const newOutflows = outflows
-    .filter(tx => tx.from?.toLowerCase() === VAULT && Number(tx.value) > 0)
-    .sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber));
+    // Process outflows (txlistinternal) — ETH sent FROM vault to recipient
+    // Filter: only where vault is the sender and value > 0
+    const newOutflows = outflows
+      .filter(tx => tx.from?.toLowerCase() === VAULT && Number(tx.value) > 0)
+      .sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber));
 
-  for (const tx of [...newInflows, ...newOutflows].sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber))) {
-    await processTx(tx);
-  }
+    for (const tx of [...newInflows, ...newOutflows].sort((a, b) => Number(a.blockNumber) - Number(b.blockNumber))) {
+      await processTx(tx);
+    }
+  } catch (err) {
+    logger.error('[CF] Scan deferred', { error: err.message });
+  } finally { polling = false; }
 }
 
 // ── Entry point ──────────────────────────────────────────────

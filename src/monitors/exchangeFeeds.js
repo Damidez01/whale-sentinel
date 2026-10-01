@@ -1,4 +1,5 @@
 const { normalizeWallet, tronFromHex } = require('../utils/addresses');
+const { cutoff, isFresh } = require('../utils/freshness');
 const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const TOKENS = {
   '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { symbol: 'USDC', decimals: 6 },
@@ -36,6 +37,15 @@ class EthereumExchangeFeed {
     if (cursor && target < cursor.number) throw Error('Exchange ETH head behind saved cursor');
     if (cursor) {
       const canonical = await this.rpc('eth_getBlockByNumber', [hex(cursor.number), false]);
+      // An old saved position is a live-monitor restart, not a backfill job.
+      // Read the confirmed target before committing so RPC failures retain state.
+      if (canonical?.timestamp && !isFresh(Number(BigInt(canonical.timestamp)) * 1000)) {
+        const head = await this.block(target);
+        if (!isFresh(Number(BigInt(head.timestamp)) * 1000)) throw Error('Exchange ETH confirmed head is stale');
+        this.engine.commit([], { ETH: { number: target, hash: head.hash } },
+          { ETH: { ok: true, block: target, lagBlocks: 0, skippedBacklog: true, checkedAt: Date.now() } });
+        return;
+      }
       if (canonical?.hash !== cursor.hash) throw Error('Exchange ETH reorganization detected; cursor retained for inspection');
     }
     const start = cursor ? cursor.number + 1 : target;
@@ -117,8 +127,9 @@ class TronExchangeFeed {
   async poll() {
     const now = this.now(), cursor = this.engine.store.data.cursors.TRON;
     // Confirmed results only; two-minute overlap allows indexing delays and is deduplicated.
-    const start = Math.max(0, (cursor?.at ?? now - 60000) - 120000);
-    const end = Math.min(now - 30000, (cursor?.at ?? now - 60000) + 300000);
+    const previous = Math.max(cutoff(now), cursor?.at ?? now - 60000);
+    const start = Math.max(0, cutoff(now), previous - 120000);
+    const end = Math.min(now - 30000, previous + 300000);
     if (end <= start) return;
     const events = [], quotes = new Map();
     const usdValue = async (amount, symbol) => {

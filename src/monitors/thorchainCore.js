@@ -1,4 +1,5 @@
 const { normalizeWallet } = require('../utils/addresses');
+const { cutoff, isFresh, freshAlert } = require('../utils/freshness');
 const ASSETS = new Map([
   ['ETH.ETH','ETH'], ['BTC.BTC','BTC'],
   ['ETH.WETH-0XC02AAA39B223FE8D0A0E5C4F27EAD9083C756CC2','WETH'],
@@ -24,7 +25,7 @@ class ThorMonitor {
   flush() {
     while(this.store.data.pending.length) {
       const a=this.store.data.pending[0];
-      if(!this.isBlocked(a.wallet))this.sendAlert(a);
+      if(freshAlert(a,this.now())&&!this.isBlocked(a.wallet))this.sendAlert(a);
       this.store.update(s=>{s.pending=s.pending.filter(x=>x.alertId!==a.alertId);});
     }
   }
@@ -75,8 +76,11 @@ class ThorMonitor {
       if(s.cursors.THOR?.at)s.cursors.THOR.at=Math.max(0,s.cursors.THOR.at-60*60000);
       s.thorScanVersion=2;
     });
-    const previous=this.store.data.cursors.THOR?.at??this.now()-5*60000;
-    const end=Math.min(this.now()-30000,previous+10*60000),start=Math.max(0,previous-2*60000);
+    const previous=Math.max(cutoff(this.now()),this.store.data.cursors.THOR?.at??this.now()-5*60000);
+    const end=Math.min(this.now()-30000,previous+10*60000),start=Math.max(0,cutoff(this.now()),previous-2*60000);
+    this.store.update(s=>{
+      for(const [id,row] of Object.entries(s.thorPending||{}))if(!isFresh(row.at,this.now()))delete s.thorPending[id];
+    });
     if(end<=previous)return;
     const actions=await this.collect(start,end),retried=[];
     for(const [id] of Object.entries(this.store.data.thorPending||{}).sort((a,b)=>a[1].checkedAt-b[1].checkedAt).slice(0,this.rules.pendingPerPoll)) {
@@ -86,6 +90,7 @@ class ThorMonitor {
     }
     const unique=new Map();
     for(const a of actions) {
+      if(!isFresh(timestamp(a),this.now()))continue;
       const id=identity(a);if(!id)throw Error('Midgard action missing transaction');
       if(!unique.has(id)||a.status==='success')unique.set(id,a);
     }
@@ -110,7 +115,7 @@ class ThorMonitor {
         const rows=(s.windows[key]||[]).filter(r=>r.at>watermark-this.rules.minutes*60000);
         if(e.at>watermark-this.rules.minutes*60000)rows.push(e);s.windows[key]=rows;
         const burst=rows.length>=this.rules.count&&rows.some(r=>r.id===id),label=e.direction==='ETH_TO_BTC'?'Exit to BTC':'BTC → Ethereum';
-        s.pending.push({chain:'THOR',wallet:e.wallet,walletChain:'ETH',walletLink:true,txHash:id,alertId:`thor:swap:${id}`,
+        s.pending.push({eventAt:e.at,chain:'THOR',wallet:e.wallet,walletChain:'ETH',walletLink:true,txHash:id,alertId:`thor:swap:${id}`,
           title:burst?`THORChain — Burst ${label}`:'THORChain — Large Swap',
           body:[`Wallet: \`${e.wallet.slice(0,6)}...${e.wallet.slice(-4)}\``,`${e.asset} → ${e.outAsset}`,'',
             ...(burst?[`*${rows.length} swaps in ${this.rules.minutes} min*`,`Total: *${money(rows.reduce((n,r)=>n+r.usd,0))}*`]:[]),

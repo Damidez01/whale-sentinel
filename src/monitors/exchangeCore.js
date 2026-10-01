@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeWallet } = require('../utils/addresses');
 const { alertWallets } = require('../utils/alertWallets');
+const { isFresh, freshAlert } = require('../utils/freshness');
 
 class ExchangeStore {
   constructor(file) {
@@ -62,7 +63,7 @@ class ExchangeEngine {
         delete s.notified[key]; // Allow a new threshold using only eligible rows.
       }
     }
-    s.pending = s.pending.filter(alert => !alertWallets(alert).some(a => this.isBlocked(a)) &&
+    s.pending = s.pending.filter(alert => freshAlert(alert) && !alertWallets(alert).some(a => this.isBlocked(a)) &&
       !(!this.rules.fanoutEnabled && alert.alertId?.includes(':out:')) &&
       !(this.rules.freshOnly && alert.alertId?.includes(':in:') && !alert.freshOnly));
   }
@@ -71,6 +72,7 @@ class ExchangeEngine {
       this.pruneBlocked(s);
       const sorted = [...events].sort((a,b) => a.at - b.at || (a.order || 0) - (b.order || 0));
       for (const raw of sorted) {
+        if (!isFresh(raw.at)) continue;
         const e = { ...raw, from: normalizeWallet(raw.from), to: normalizeWallet(raw.to) };
         if (!e.from || !e.to || e.from === e.to || !Number.isFinite(e.at) || !Number.isFinite(e.usd) || e.usd < 0 || !e.id || !e.hash) continue;
         if (e.usd < Math.min(this.rules.min, this.rules.fanoutMin)) continue;
@@ -113,7 +115,7 @@ class ExchangeEngine {
             counterparties.set(address, (counterparties.get(address) || 0) + row.usd);
           }
           const others = [...counterparties].filter(([address]) => address !== subject);
-          s.pending.push({ chain: e.chain, wallet: subject, walletLink: true, txHash: e.hash,
+          s.pending.push({ eventAt: e.at, chain: e.chain, wallet: subject, walletLink: true, txHash: e.hash,
             countedWallets: [wallet.address, ...counterparties.keys()],
             freshOnly: accumulation && this.rules.freshOnly,
             alertId: `exchange:${key}:${e.id}:${distinct}`,
