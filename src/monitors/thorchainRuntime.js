@@ -2,6 +2,7 @@ const axios=require('axios');
 const path=require('path');
 const {ExchangeStore}=require('./exchangeCore');
 const {ThorMonitor,thorSettings}=require('./thorchainCore');
+const {assessThorHistory}=require('./thorchainHistory');
 const {sendAlert,isBlocked}=require('../alerts/telegram');
 const {getPrice}=require('../utils/prices');
 const logger=require('../utils/logger');
@@ -28,11 +29,20 @@ function startTHORChainMonitor() {
     throw Error('Midgard unavailable; '+errors.join('; '));
   };
   const store=new ExchangeStore(path.join(process.env.TELEGRAM_DATA_DIR||'/data','thorchain-state.json'));
-  const monitor=new ThorMonitor({store,rules,request,sendAlert,isBlocked,price:s=>getPrice(s,{maxAgeMs:15*60000})});
+  const ethereum=async params=>{
+    if(!process.env.ETHERSCAN_API_KEY)throw Error('ETHERSCAN_API_KEY required for THOR wallet history');
+    return (await axios.get('https://api.etherscan.io/v2/api',{params:{...params,chainid:1,apikey:process.env.ETHERSCAN_API_KEY},timeout:15000})).data;
+  };
+  const monitor=new ThorMonitor({store,rules,request,sendAlert,isBlocked,
+    history:event=>assessThorHistory(event,{request,ethereum,rules}),price:s=>getPrice(s,{maxAgeMs:15*60000})});
   let busy=false;
   const poll=async()=>{
     if(busy)return;busy=true;
-    try {await monitor.poll();logger.info('[THOR] Scan succeeded',{through:store.data.cursors.THOR?.at,pendingSwaps:Object.keys(store.data.thorPending||{}).length,...monitor.lastScan});}
+    try {await monitor.poll();
+      const details={through:store.data.cursors.THOR?.at,pendingSwaps:Object.keys(store.data.thorPending||{}).length,...monitor.lastScan};
+      if(monitor.lastScan?.historyErrors)logger.warn('[THOR] Wallet history checks deferred',details);
+      else logger.info('[THOR] Scan succeeded',details);
+    }
     catch(err){logger.warn(`[THOR] ${err.isAxiosError?'Provider request failed':err.message}; saved progress retained`);}
     finally{busy=false;}
   };

@@ -45,12 +45,12 @@ test('exchange alert links and block subject identify triggering counterparties 
     for (const incoming of [false,true]) {
       const f=fixture(t,[wallet]);
       f.engine.commit(peers.map((peer,i)=>({chain,symbol:'USDT',id:'link'+i,hash:'link'+i,at:T+i*1000,usd:50000,
-        from:incoming?peer:hot,to:incoming?hot:peer})));
+        from:incoming?peers[2]:hot,to:incoming?hot:peer})));
       const alert=f.store.data.pending[0];
       assert.equal(alert.wallet,peers[2]);
       assert.equal(alert.txHash,'link2');
       assert.match(alert.body,incoming?/Source wallet:/ : /Destination wallet:/);
-      for (const peer of peers) assert.ok(alert.body.includes(`[${peer.slice(0,6)}...${peer.slice(-4)}](https://arkm.com/explorer/address/${peer})`));
+      for (const peer of incoming?[peers[2]]:peers) assert.ok(alert.body.includes(`[${peer.slice(0,6)}...${peer.slice(-4)}](https://arkm.com/explorer/address/${peer})`));
       assert.doesNotMatch(alert.body,/provided by you|triggering transfer|Exchange hot wallet|Window through|unverified/);
     }
   }
@@ -60,6 +60,41 @@ test('all five supplied wallets validate; TRON checksum and letter case are enfo
   assert.equal(normalizeWallet(watchlist[2].address.toLowerCase()), null);
   assert.equal(normalizeWallet(watchlist[2].address.slice(0,-1) + 'a'), null);
   assert.ok(normalizeWallet(tronFromHex('41' + '11'.repeat(20))));
+});
+
+test('unrelated sources never combine into exchange accumulation on ETH or TRON',t=>{
+  for(const chain of ['ETH','TRON']) {
+    const wallet=watchlist.find(w=>w.chain===chain),hot=normalizeWallet(wallet.address);
+    const peers=chain==='ETH'?[B,C,D]:['11','22','33'].map(x=>tronFromHex('41'+x.repeat(20)));
+    const f=fixture(t,[wallet]);
+    const event=(id,from)=>({chain,symbol:'USDT',id,hash:id,at:T,usd:50000,from,to:hot});
+    f.engine.commit(peers.map((from,i)=>event('initial'+i,from)));assert.equal(f.store.data.pending.length,0);
+    f.engine.commit([event('b2',peers[0]),event('b3',peers[0])]);assert.equal(f.store.data.pending.length,1);
+    const alert=f.store.data.pending[0];assert.equal(alert.wallet,peers[0]);assert.equal(alert.sourceGrouped,true);
+    assert.deepEqual(alert.countedWallets,[hot,peers[0]]);assert.match(alert.body,/150,000/);
+    assert.ok(!alert.body.includes(peers[1].slice(-4)));assert.ok(!alert.body.includes(peers[2].slice(-4)));
+  }
+});
+
+test('exchange source groups survive restart and remain separate for different exchange destinations',t=>{
+  const list=watchlist.filter(w=>w.chain==='ETH').slice(0,2),f=fixture(t,list);
+  f.engine.commit([row(0),row(1),row(2,{to:normalizeWallet(list[1].address)})]);
+  const store=new ExchangeStore(f.store.file),engine=new ExchangeEngine(store,list,rules);
+  engine.commit([row(3)]);assert.equal(store.data.pending.length,1);
+  assert.match(store.data.pending[0].body,/150,000/);
+});
+
+test('exchange grouping upgrade discards mixed-source windows and queued summaries while retaining cursors and dedup',t=>{
+  const f=fixture(t);
+  f.store.update(s=>{
+    delete s.inflowGroupingVersion;s.windows[`ETH:${A}:in`]=[row(0),row(1,{from:C})];
+    s.notified[`ETH:${A}:in`]={at:T,count:3};s.pending=[{alertId:`exchange:ETH:${A}:in:old:3`,eventAt:T}];
+    s.cursors.ETH={number:100,hash:'saved'};s.seen.saved=T;
+  });
+  const engine=new ExchangeEngine(f.store,watchlist,rules);
+  engine.flush(()=>{throw Error('legacy alert delivered');});
+  assert.equal(Object.keys(f.store.data.windows).length,0);assert.equal(f.store.data.seen.saved,T);
+  assert.equal(f.store.data.cursors.ETH.number,100);
 });
 test('exchange accumulation is three >=50k transfers in distinct transactions and survives restart', t => {
   const f = fixture(t); f.engine.commit([row(0), row(1, { symbol: 'USDT' })]);
@@ -192,6 +227,15 @@ test('TRON truly missing native timestamps still retain the cursor', async t => 
 test('blocking prunes active inflow and fan-out counts and pending summaries', t => {
   for (const incoming of [true,false]) {
     const blocked=new Set(), f=fixture(t,watchlist,rules,{isBlocked:a=>blocked.has(a)});
+    if(incoming) {
+      f.engine.commit([row(0),row(1)]);blocked.add(B);
+      f.engine.commit([row(2)]);assert.equal(f.store.data.pending.length,0);
+      f.engine.commit([row(3,{from:C}),row(4,{from:C}),row(5,{from:C})]);
+      assert.equal(f.store.data.pending.length,1);blocked.add(C);
+      f.engine.flush(()=>{throw Error('blocked source delivered');});assert.equal(f.store.data.pending.length,0);
+      assert.ok(Object.values(f.store.data.windows).flat().every(e=>e.from!==B&&e.from!==C));
+      continue;
+    }
     const event=(i,peer)=>row(i,{from:incoming?peer:A,to:incoming?A:peer});
     f.engine.commit([event(0,B),event(1,C)]);
     blocked.add(B);

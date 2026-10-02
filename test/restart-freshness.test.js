@@ -51,6 +51,10 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     d.queue.push({ id: 'reply', alert: { text: 'Saved' }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'unit-unverified', alert: { alertId: 'hyperunit:unverified', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'unit-verified', alert: { alertId: 'hyperunit:verified', eventAt: NOW, unitHistoryVerified: true }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'thor-old', alert: { alertId: 'thor:swap:old', eventAt: NOW }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'thor-new', alert: { alertId: 'thor:swap:new', eventAt: NOW, thorHistoryVerified: true }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'exchange-old', alert: { alertId: 'exchange:ETH:hot:in:old:3', eventAt: NOW }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'exchange-new', alert: { alertId: 'exchange:ETH:hot:source:in:new:3', eventAt: NOW, sourceGrouped: true }, at: NOW, nextAttempt: 0 });
   });
   const sandbox = { module: { exports: {} }, process: { env: {} }, require: name => {
     if (name === 'node-telegram-bot-api') return class {};
@@ -61,7 +65,7 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     return {};
   } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8'), sandbox);
-  assert.deepEqual(s.data.queue.map(x => x.id), ['fresh', 'reply', 'unit-verified']);
+  assert.deepEqual(s.data.queue.map(x => x.id), ['fresh', 'reply', 'unit-verified', 'thor-new', 'exchange-new']);
 });
 
 test('Unit clamps three-day cursor and drops expired candidates and pending alerts before lookup', async t => {

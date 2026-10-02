@@ -50,6 +50,13 @@ class ExchangeEngine {
     this.isBlocked = isBlocked;
     this.wallets = wallets.map(w => ({ ...w, address: normalizeWallet(w.address) }));
     if (this.wallets.some(w => !w.address || !['ETH','TRON'].includes(w.chain))) throw Error('Invalid exchange watchlist');
+    store.update(s => {
+      if (s.inflowGroupingVersion !== 2) {
+        for (const key of Object.keys(s.windows)) if (key.endsWith(':in')) { delete s.windows[key]; delete s.notified[key]; }
+        s.inflowGroupingVersion = 2;
+      }
+      s.pending = s.pending.filter(a => !a.alertId?.includes(':in:') || a.sourceGrouped === true);
+    });
   }
   pruneBlocked(s) {
     for (const [key, rows] of Object.entries(s.windows)) {
@@ -89,7 +96,7 @@ class ExchangeEngine {
           const min = accumulation ? this.rules.min : this.rules.fanoutMin;
           if (e.usd < min) continue;
           const windowMs = (accumulation ? this.rules.minutes : this.rules.fanoutMinutes) * 60000;
-          const key = `${e.chain}:${wallet.address}:${direction}`;
+          const key = accumulation ? `${e.chain}:${wallet.address}:${e.from}:in` : `${e.chain}:${wallet.address}:out`;
           const watermark = Math.max(e.at, ...(s.windows[key] || []).map(x => x.at));
           if (e.at <= watermark - windowMs) continue;
           const rows = (s.windows[key] || []).filter(x => x.at > watermark - windowMs);
@@ -118,12 +125,14 @@ class ExchangeEngine {
           s.pending.push({ eventAt: e.at, chain: e.chain, wallet: subject, walletLink: true, txHash: e.hash,
             countedWallets: [wallet.address, ...counterparties.keys()],
             freshOnly: accumulation && this.rules.freshOnly,
+            sourceGrouped: accumulation,
             alertId: `exchange:${key}:${e.id}:${distinct}`,
-            title: `${wallet.service} — ${accumulation ? 'Hot-wallet accumulation' : 'Hot-wallet fan-out'}`,
+            title: `${wallet.service} — ${accumulation ? 'Single-source deposit accumulation' : 'Hot-wallet fan-out'}`,
             body: [
               `${accumulation ? 'Source' : 'Destination'} wallet: \`${short(subject)}\``,
+              ...(accumulation ? [`Exchange destination: [${short(wallet.address)}](${addressUrl(wallet.address)})`] : []),
               '',
-              accumulation ? `*${distinct} incoming txns in ${windowMs / 60000} min*` : `*${distinct} destinations in ${windowMs / 60000} min*`,
+              accumulation ? `*${distinct} incoming txns from this source in ${windowMs / 60000} min*` : `*${distinct} destinations in ${windowMs / 60000} min*`,
               `Total ${accumulation ? 'received' : 'sent'}: *${money(current.reduce((sum,x) => sum+x.usd, 0))}*`,
               `Each: ≥ ${money(min)}`,
               ...(accumulation && this.rules.freshOnly ? [`Sources: ≤${this.rules.freshMaxTx} observed txns; ≤${this.rules.freshMaxHours}h history`] : []),

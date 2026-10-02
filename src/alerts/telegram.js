@@ -17,6 +17,12 @@ if (process.env.HYPERUNIT_FRESH_ONLY !== 'false') {
   state.update(s => { s.queue = s.queue.filter(item =>
     !(item.alert.alertId?.startsWith('hyperunit:') && item.alert.unitHistoryVerified !== true)); });
 }
+if (process.env.THORCHAIN_FRESH_ONLY !== 'false') {
+  state.update(s => { s.queue = s.queue.filter(item =>
+    !(item.alert.alertId?.startsWith('thor:') && item.alert.thorHistoryVerified !== true)); });
+}
+state.update(s => { s.queue = s.queue.filter(item =>
+  !(item.alert.alertId?.startsWith('exchange:') && item.alert.alertId.includes(':in:') && item.alert.sourceGrouped !== true)); });
 if (process.env.EXCHANGE_FANOUT_ENABLED !== 'true') {
   state.update(s => { s.queue = s.queue.filter(item =>
     !(item.alert.alertId?.startsWith('exchange:') && item.alert.alertId.includes(':out:'))); });

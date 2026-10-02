@@ -16,16 +16,29 @@ function timestamp(a) {
 }
 function thorSettings(env={}) {
   const n=(key,d)=>{const v=Number(env[key]||d);if(!Number.isSafeInteger(v)||v<=0)throw Error(`Invalid ${key}`);return v;};
+  const count=(key,d)=>{const v=Number(env[key]??d);if(!Number.isSafeInteger(v)||v<0)throw Error(`Invalid ${key}`);return v;};
   return {min:n('THORCHAIN_MIN_SWAP_USD',500000),count:n('THORCHAIN_BURST_COUNT',3),minutes:n('THORCHAIN_BURST_WINDOW_MIN',30),
+    freshOnly:env.THORCHAIN_FRESH_ONLY!=='false',maxPriorSwaps:count('THORCHAIN_MAX_PRIOR_SWAPS',2),
+    maxEthTransactions:count('THORCHAIN_MAX_PRIOR_ETH_TXS',10),historyMaxPages:n('THORCHAIN_HISTORY_MAX_PAGES',5),
+    cooldownMs:n('THORCHAIN_ALERT_COOLDOWN_MIN',60)*60000,
     pollMs:Math.max(15000,n('THORCHAIN_POLL_MS',60000)),maxPages:n('THORCHAIN_MAX_PAGES',20),pendingPerPoll:n('THORCHAIN_PENDING_PER_POLL',20)};
 }
 const money=n=>'$'+Math.round(n).toLocaleString('en-US');
 class ThorMonitor {
-  constructor(options) { Object.assign(this,{now:Date.now,isBlocked:()=>false},options); }
+  constructor(options) {
+    Object.assign(this,{now:Date.now,isBlocked:()=>false},options);
+    this.store.update(s=>{
+      s.thorProfiles ||= {};s.thorHistoryPending ||= {};s.thorNotifications ||= {};
+      if(this.rules.freshOnly) {
+        s.pending=s.pending.filter(a=>a.thorHistoryVerified===true);
+        for(const [key,rows] of Object.entries(s.windows))s.windows[key]=rows.filter(e=>e.history?.eligible===true);
+      }
+    });
+  }
   flush() {
     while(this.store.data.pending.length) {
       const a=this.store.data.pending[0];
-      if(freshAlert(a,this.now())&&!this.isBlocked(a.wallet))this.sendAlert(a);
+      if((!this.rules.freshOnly||a.thorHistoryVerified===true)&&freshAlert(a,this.now())&&!this.isBlocked(a.wallet))this.sendAlert(a);
       this.store.update(s=>{s.pending=s.pending.filter(x=>x.alertId!==a.alertId);});
     }
   }
@@ -80,9 +93,9 @@ class ThorMonitor {
     const end=Math.min(this.now()-30000,previous+10*60000),start=Math.max(0,cutoff(this.now()),previous-2*60000);
     this.store.update(s=>{
       for(const [id,row] of Object.entries(s.thorPending||{}))if(!isFresh(row.at,this.now()))delete s.thorPending[id];
+      for(const [id,e] of Object.entries(s.thorHistoryPending))if(!isFresh(e.at,this.now()))delete s.thorHistoryPending[id];
     });
-    if(end<=previous)return;
-    const actions=await this.collect(start,end),retried=[];
+    const actions=end>previous?await this.collect(start,end):[],retried=[];
     for(const [id] of Object.entries(this.store.data.thorPending||{}).sort((a,b)=>a[1].checkedAt-b[1].checkedAt).slice(0,this.rules.pendingPerPoll)) {
       const data=await this.request({txid:id,limit:50});
       if(!Array.isArray(data?.actions))throw Error('Invalid pending THOR response');
@@ -96,39 +109,76 @@ class ThorMonitor {
     }
     const parsed=[];
     for(const [id,a] of unique)if(!this.store.data.seen[id])parsed.push({id,a,event:await this.parse(a)});
+    for(const [id,event] of Object.entries(this.store.data.thorHistoryPending)) {
+      if(!unique.has(id)&&!this.store.data.seen[id])parsed.push({id,event,a:{status:'success',date:String(BigInt(event.at)*1000000n)}});
+    }
     parsed.sort((a,b)=>timestamp(a.a)-timestamp(b.a));
-    const stats={scanned:unique.size,pendingRetried:retried.length,completed:0,qualifying:0,blocked:0,queued:0,minSwapUsd:this.rules.min};
+    const stats={scanned:unique.size,pendingRetried:retried.length,completed:0,qualifying:0,blocked:0,queued:0,filtered:0,historyErrors:0,minSwapUsd:this.rules.min};
+    const profiles=structuredClone(this.store.data.thorProfiles),held=new Set();let checks=0;
+    const policy=`${this.rules.maxPriorSwaps}:${this.rules.maxEthTransactions}:${this.rules.minutes}`;
+    for(const {event:e} of parsed) {
+      if(!e||!this.rules.freshOnly||this.isBlocked(e.wallet)||held.has(e.wallet))continue;
+      try {
+        let profile=profiles[e.wallet];
+        if(!profile||profile.policy!==policy||e.at<profile.start||e.at>profile.until) {
+          if(checks>=this.rules.pendingPerPoll){held.add(e.wallet);continue;}
+          checks++;
+          const history=await this.history(e);
+          if(typeof history?.eligible!=='boolean')throw Error('Invalid THOR history verdict');
+          profile={policy,start:e.at,until:e.at+this.rules.minutes*60000,history};profiles[e.wallet]=profile;
+        }
+        e.history=profile.history;
+      } catch {stats.historyErrors++;held.add(e.wallet);}
+    }
     this.store.update(s=>{
       s.thorPending ||= {};
+      s.thorProfiles=profiles;
       for(const id of retried)if(s.thorPending[id])s.thorPending[id].checkedAt=this.now();
       for(const {id,a,event:e} of parsed) {
         if(a.status==='pending') {
           if(symbol(a.in?.[0]?.coins?.[0]?.asset))s.thorPending[id] ||= {at:timestamp(a),checkedAt:0};
           if(Object.keys(s.thorPending).length>10000)throw Error('THOR pending limit reached');continue;
         }
+        if(e&&this.rules.freshOnly&&!e.history&&!this.isBlocked(e.wallet)) {
+          s.thorHistoryPending[id]=e;
+          if(Object.keys(s.thorHistoryPending).length>10000)throw Error('THOR history backlog full');
+          continue;
+        }
+        delete s.thorHistoryPending[id];
         delete s.thorPending[id];s.seen[id]=timestamp(a);
         if(a.status==='success')stats.completed++;
         if(!e)continue;
         stats.qualifying++;
         if(this.isBlocked(e.wallet)){stats.blocked++;continue;}
+        if(this.rules.freshOnly&&!e.history.eligible){stats.filtered++;continue;}
         const key=e.direction+':'+e.wallet,watermark=Math.max(e.at,...(s.windows[key]||[]).map(r=>r.at));
         const rows=(s.windows[key]||[]).filter(r=>r.at>watermark-this.rules.minutes*60000);
         if(e.at>watermark-this.rules.minutes*60000)rows.push(e);s.windows[key]=rows;
         const burst=rows.length>=this.rules.count&&rows.some(r=>r.id===id),label=e.direction==='ETH_TO_BTC'?'Exit to BTC':'BTC → Ethereum';
+        const notice=s.thorNotifications[e.wallet],cooling=notice&&this.now()-notice.startedAt<this.rules.cooldownMs;
+        const trackedTotal=cooling?notice.total+e.usd:e.usd;
+        if(cooling)notice.total=trackedTotal;
+        if(cooling&&trackedTotal<notice.alertedTotal*2)continue;
+        s.thorNotifications[e.wallet]={startedAt:cooling?notice.startedAt:this.now(),total:trackedTotal,alertedTotal:trackedTotal};
         s.pending.push({eventAt:e.at,chain:'THOR',wallet:e.wallet,walletChain:'ETH',walletLink:true,txHash:id,alertId:`thor:swap:${id}`,
+          thorHistoryVerified:this.rules.freshOnly&&e.history.eligible===true,
           title:burst?`THORChain — Burst ${label}`:'THORChain — Large Swap',
           body:[`Wallet: \`${e.wallet.slice(0,6)}...${e.wallet.slice(-4)}\``,`${e.asset} → ${e.outAsset}`,'',
             ...(burst?[`*${rows.length} swaps in ${this.rules.minutes} min*`,`Total: *${money(rows.reduce((n,r)=>n+r.usd,0))}*`]:[]),
-            `Swap: ${e.amount.toFixed(4)} ${e.asset} → ${e.outAmount.toFixed(4)} ${e.outAsset}`,`Value: *${money(e.usd)}*`].join('\n')});
+            `Swap: ${e.amount.toFixed(4)} ${e.asset} → ${e.outAmount.toFixed(4)} ${e.outAsset}`,`Value: *${money(e.usd)}*`,
+            ...(cooling?[`Tracked swap volume since first alert: *${money(trackedTotal)}*`]:[]),
+            ...(this.rules.freshOnly?[`Prior activity: ${e.history.priorSwaps} THORChain swaps; ${e.history.ethTransactions} Ethereum transactions`]:[])].join('\n')});
         if(s.pending.length>10000)throw Error('THOR alert backlog full');
         stats.queued++;
       }
-      s.cursors.THOR={at:end};
+      s.cursors.THOR={at:Math.max(previous,end)};
       for(const [id,at] of Object.entries(s.seen))if(at<this.now()-30*86400000)delete s.seen[id];
       for(const [key,rows] of Object.entries(s.windows))s.windows[key]=rows.filter(r=>r.at>this.now()-2*86400000&&!this.isBlocked(r.wallet));
+      for(const [wallet,p] of Object.entries(s.thorProfiles))if(p.until<cutoff(this.now()))delete s.thorProfiles[wallet];
+      for(const [wallet,n] of Object.entries(s.thorNotifications))if(this.now()-n.startedAt>=this.rules.cooldownMs)delete s.thorNotifications[wallet];
     });
     this.flush();
-    this.lastScan=stats;
+    this.lastScan={...stats,historyPending:Object.keys(this.store.data.thorHistoryPending).length};
   }
 }
 module.exports={ThorMonitor,thorSettings,symbol};
