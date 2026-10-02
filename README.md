@@ -21,6 +21,20 @@ is required. Alerts with event timestamps display event time separately from sen
 
 ## Modules
 
+Dormancy alerts verify Ethereum outgoing transaction history through Etherscan V2
+using the existing `ETHERSCAN_API_KEY`. A successful transfer above
+`DORMANT_MIN_USD` (default $500k) qualifies only when the immediately preceding
+sender nonce is at least `DORMANT_MONTHS` (default six 30-day months) older.
+Small sends, zero-value contract calls and failed transactions count as outgoing
+activity. This works after a restart without waiting six months for local history.
+It does not claim absence of incoming transfers or activity on other chains.
+First-time senders do not qualify. Missing keys or incomplete history suppress the
+alert; indexing/API failures retry twice at 15-second intervals and then log a
+warning. Each lookup is bounded to five pages of 100 normal transactions.
+
+Chainflip vault alerts describe ETH inflows/outflows only. They do not infer the
+other swap asset or claim a completed BTC conversion from a vault transfer alone.
+
 ### 1. Tornado Cash Monitor
 Direct Deposit event listener on Ethereum mainnet.
 

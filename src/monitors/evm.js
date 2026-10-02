@@ -530,22 +530,29 @@ async function checkFlaggedWallet(tx, usdValue, chain) {
 
 // ── Rule 6: Dormant wallet ───────────────────────────────────
 async function checkDormantWallet(tx, usdValue, chain) {
-  if (usdValue < DORMANT_USD) return;
-
-  const key  = `seen:${tx.from?.toLowerCase()}`;
-  const seen = getKey(key);
-
-  if (!seen) {
-    setKey(key, Date.now().toString(), 86400 * 30);
-    return;
+  if (usdValue < DORMANT_USD || chain !== 'ETH' || !process.env.ETHERSCAN_API_KEY || isBlocked(tx.from)) return;
+  const { inspectDormancy } = require('./dormancy');
+  const { isFresh } = require('../utils/freshness');
+  const axios = require('axios');
+  // Explorer indexing can trail the live block feed. Retry boundedly, without
+  // blocking other rules or interpreting a failed lookup as a dormant wallet.
+  let history;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      history = await inspectDormancy(tx, { months: DORMANT_MONTHS, request: async params =>
+        (await axios.get('https://api.etherscan.io/v2/api', { params: { ...params, chainid: 1,
+          apikey: process.env.ETHERSCAN_API_KEY }, timeout: 15000 })).data });
+      break;
+    } catch {
+      if (attempt === 2) { logger.warn('[EVM:ETH] Dormancy history unverified; alert skipped'); return; }
+      await new Promise(resolve => setTimeout(resolve, 15000));
+    }
   }
-
-  const monthsAgo = (Date.now() - Number(seen)) / (1000 * 3600 * 24 * 30);
-
-  if (monthsAgo >= DORMANT_MONTHS) {
+  if (history && isFresh(history.eventAt) && !isBlocked(tx.from)) {
     sendAlert({
       chain,
-      title: '🟠 HIGH — Dormant Wallet Active',
+      eventAt: history.eventAt,
+      title: '🟠 HIGH — Wallet Resumes Sending',
       alertId: `evm:dormant:${tx.hash}`,
       txHash: tx.hash,
       wallet: tx.from,
@@ -553,15 +560,16 @@ async function checkDormantWallet(tx, usdValue, chain) {
       body: [
         `Wallet: \`${shortAddr(tx.from)}\``,
         ``,
-        `Silent for *${monthsAgo.toFixed(0)} months*`,
+        `No outgoing transactions for *${history.months.toFixed(1)} months*`,
+        `Previous outgoing: ${new Date(history.previousAt).toUTCString()}`,
+        `Scope: Ethereum outgoing transactions only`,
         `Now moving: *${fmtUSD(usdValue)}*`,
         ``,
-        `⚠️ Dormant whale activity detected`,
+        `⚠️ Large transfer after outgoing inactivity`,
       ].join('\n'),
     });
   }
 
-  setKey(key, Date.now().toString(), 86400 * 30);
 }
 
 // ── Rule 7: Fan-out ──────────────────────────────────────────

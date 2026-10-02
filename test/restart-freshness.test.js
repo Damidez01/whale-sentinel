@@ -163,4 +163,6 @@ test('Chainflip historical transfers cannot log alerts or build a processing-tim
   assert.equal(f.alerts.length, 0); assert.deepEqual(f.counts(), { prices: 0, bursts: 0 });
   await f.processTx({ ...tx, hash: 'new', timeStamp: Math.floor(NOW / 1000) });
   assert.equal(f.alerts.length, 1); assert.equal(f.alerts[0].eventAt, Math.floor(NOW / 1000) * 1000);
+  assert.match(f.alerts[0].body, /Chainflip ETH outflow/);
+  assert.doesNotMatch(f.alerts[0].body, /BTC|conversion|swap initiated/);
 });

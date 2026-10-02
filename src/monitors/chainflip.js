@@ -108,8 +108,8 @@ async function processTx(tx) {
     setKey(dedupKey, '1', 86400 * 7);
 
     const direction = isOutflow
-      ? { emoji: '📤', label: 'ETH OUT (BTC→ETH swap egress)', wallet: tx.to   }
-      : { emoji: '📥', label: 'ETH IN (ETH→BTC deposit)',      wallet: tx.from };
+      ? { emoji: '📤', label: 'Chainflip ETH outflow', wallet: tx.to   }
+      : { emoji: '📥', label: 'Chainflip ETH inflow',  wallet: tx.from };
 
     const ethPrice = await getPrice('ETH');
     if (!ethPrice) return;
@@ -164,8 +164,8 @@ async function processTx(tx) {
           `Amount: *${ethAmount.toFixed(2)} ETH (${fmtUSD(usdValue)})*`,
           ``,
           isOutflow
-            ? `⚠️ Swap egress — likely BTC→ETH conversion complete`
-            : `⚠️ Large deposit — likely ETH→BTC swap initiated`,
+            ? `ETH transferred from the Chainflip vault`
+            : `ETH transferred to the Chainflip vault`,
           ``,
           `🔗 [Chainflip Explorer](https://scan.chainflip.io)`,
         ].join('\n'),
