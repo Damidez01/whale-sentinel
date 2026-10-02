@@ -13,6 +13,10 @@ const state = new DurableState(path.join(process.env.TELEGRAM_DATA_DIR || '/data
 // Their original event age is unknowable, so discard only these legacy alerts.
 state.update(s => { s.queue = s.queue.filter(item =>
   !(/^(cf:|thor:|hyperunit:|exchange:)/.test(item.alert.alertId || '') && !item.alert.eventAt)); });
+if (process.env.HYPERUNIT_FRESH_ONLY !== 'false') {
+  state.update(s => { s.queue = s.queue.filter(item =>
+    !(item.alert.alertId?.startsWith('hyperunit:') && item.alert.unitHistoryVerified !== true)); });
+}
 if (process.env.EXCHANGE_FANOUT_ENABLED !== 'true') {
   state.update(s => { s.queue = s.queue.filter(item =>
     !(item.alert.alertId?.startsWith('exchange:') && item.alert.alertId.includes(':out:'))); });

@@ -49,6 +49,8 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     ({ id, alert: { alertId: id }, at: NOW, nextAttempt: 0 }));
     d.queue.push({ id: 'fresh', alert: { alertId: 'cf:single:new', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'reply', alert: { text: 'Saved' }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'unit-unverified', alert: { alertId: 'hyperunit:unverified', eventAt: NOW }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'unit-verified', alert: { alertId: 'hyperunit:verified', eventAt: NOW, unitHistoryVerified: true }, at: NOW, nextAttempt: 0 });
   });
   const sandbox = { module: { exports: {} }, process: { env: {} }, require: name => {
     if (name === 'node-telegram-bot-api') return class {};
@@ -59,7 +61,7 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     return {};
   } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8'), sandbox);
-  assert.deepEqual(s.data.queue.map(x => x.id), ['fresh', 'reply']);
+  assert.deepEqual(s.data.queue.map(x => x.id), ['fresh', 'reply', 'unit-verified']);
 });
 
 test('Unit clamps three-day cursor and drops expired candidates and pending alerts before lookup', async t => {

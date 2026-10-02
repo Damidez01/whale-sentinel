@@ -14,6 +14,8 @@ function startHyperunitMonitor() {
     ledger: async (user, startTime, endTime) => (await axios.post('https://api.hyperliquid.xyz/info',
       { type: 'userNonFundingLedgerUpdates', user, startTime, endTime }, { timeout: 15000 })).data,
     operations: async wallet => (await axios.get(`https://api.hyperunit.xyz/operations/${wallet}`, { timeout: 15000 })).data,
+    fills: async user => (await axios.post('https://api.hyperliquid.xyz/info',
+      { type: 'userFills', user, aggregateByTime: true }, { timeout: 15000 })).data,
   });
   let busy = false;
   const poll = async () => {
@@ -22,7 +24,7 @@ function startHyperunitMonitor() {
     try {
       await monitor.poll();
       const s = monitor.lastScan;
-      if (s.lookupErrors || s.oldestPendingMinutes >= 15 || s.pending >= 2000)
+      if (s.lookupErrors || s.historyErrors || s.oldestPendingMinutes >= 15 || s.pending >= 2000)
         logger.warn('[UNIT] Deposit verification delayed; pending receipts retained', s);
       else logger.info('[UNIT] Scan succeeded', s);
     } catch (err) {

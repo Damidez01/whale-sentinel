@@ -1,4 +1,5 @@
 const { cutoff, isFresh, freshAlert } = require('../utils/freshness');
+const { assessHistory } = require('./hyperunitHistory');
 const TREASURIES = [
   { asset: 'btc', token: 'UBTC', chain: 'bitcoin', address: '0x574bafce69d9411f662a433896e74e4f153096fa' },
   { asset: 'eth', token: 'UETH', chain: 'ethereum', address: '0x8dafbe89302656a7df43c470e9ebcb4c540835c0' },
@@ -18,8 +19,15 @@ function unitSettings(env = process.env) {
     count: n('HYPERUNIT_ACCUM_COUNT', 3),
     minutes: n('HYPERUNIT_ACCUM_WIN_MIN', 15),
     pollMs: Math.max(30000, n('HYPERUNIT_POLL_MS', 60000)),
+    freshOnly: env.HYPERUNIT_FRESH_ONLY !== 'false',
+    maxUnitOperations: Number(env.HYPERUNIT_MAX_PRIOR_OPERATIONS ?? 2),
+    maxLedgerTransactions: Number(env.HYPERUNIT_MAX_PRIOR_HL_TRANSFERS ?? 10),
+    maxExecutedTrades: Number(env.HYPERUNIT_MAX_PRIOR_HL_TRADES ?? 10),
+    cooldownMs: n('HYPERUNIT_ALERT_COOLDOWN_MIN', 60) * 60000,
   };
   if (!Number.isSafeInteger(rules.count)) throw Error('Invalid HYPERUNIT_ACCUM_COUNT');
+  for (const key of ['maxUnitOperations', 'maxLedgerTransactions', 'maxExecutedTrades'])
+    if (!Number.isSafeInteger(rules[key]) || rules[key] < 0) throw Error(`Invalid Hyperunit history limit: ${key}`);
   return rules;
 }
 
@@ -57,18 +65,25 @@ function matchOperation(e, operations) {
   const op = matches[0], sourceHash = String(op.sourceTxHash || '').split(':')[0];
   if (!(e.asset === 'btc' ? /^[0-9a-f]{64}$/i : /^0x[0-9a-f]{64}$/i).test(sourceHash) ||
       !op.operationId || op.operationId !== op.sourceTxHash) return null;
-  return { ...e, operationId: op.operationId, sourceHash, source: op.sourceAddress,
+  return { ...e, operationId: op.operationId, operationAt: Date.parse(op.opCreatedAt), sourceHash, source: op.sourceAddress,
     depositId: `${e.asset}:${lower(sourceHash)}:${e.wallet}` };
 }
 
 class UnitMonitor {
-  constructor({ store, rules = unitSettings(), ledger, operations, sendAlert, isBlocked = () => false, now = Date.now }) {
-    Object.assign(this, { store, rules, ledger, operations, sendAlert, isBlocked, now });
-    store.update(s => { s.unitCandidates ||= {}; });
+  constructor({ store, rules = unitSettings(), ledger, operations, fills, sendAlert, isBlocked = () => false, now = Date.now }) {
+    Object.assign(this, { store, rules, ledger, operations, fills, sendAlert, isBlocked, now });
+    store.update(s => {
+      s.unitCandidates ||= {}; s.unitProfiles ||= {}; s.unitNotifications ||= {};
+      if (rules.freshOnly) {
+        s.pending = s.pending.filter(a => a.unitHistoryVerified === true);
+        for (const [wallet, rows] of Object.entries(s.windows))
+          s.windows[wallet] = rows.filter(e => e.history?.eligible === true);
+      }
+    });
   }
   async flush() {
     for (const alert of [...this.store.data.pending]) {
-      if (freshAlert(alert, this.now()) && !this.isBlocked(alert.wallet)) await this.sendAlert(alert);
+      if ((!this.rules.freshOnly || alert.unitHistoryVerified === true) && freshAlert(alert, this.now()) && !this.isBlocked(alert.wallet)) await this.sendAlert(alert);
       this.store.update(s => { s.pending = s.pending.filter(a => a.alertId !== alert.alertId); });
     }
   }
@@ -83,25 +98,36 @@ class UnitMonitor {
           delete s.windows[e.wallet]; delete s.unitCandidates[e.key];
           continue;
         }
-        if (!e.depositId) { held.add(e.wallet); continue; }
+        if (!e.depositId || (this.rules.freshOnly && !e.history)) { held.add(e.wallet); continue; }
         if (held.has(e.wallet)) continue; // Never evaluate a receiver out of receipt order.
         delete s.unitCandidates[e.key];
         if (s.seen[e.depositId]) continue;
         s.seen[e.depositId] = e.at;
+        if (this.rules.freshOnly && !e.history.eligible) continue;
         const rows = (s.windows[e.wallet] || []).filter(r => r.at >= e.at - this.rules.minutes * 60000);
         rows.push(e); s.windows[e.wallet] = rows;
         const total = rows.reduce((sum,r) => sum + r.usd, 0);
         const accumulation = rows.length >= this.rules.count && total >= this.rules.total;
+        const previous = s.unitNotifications[e.wallet];
+        const cooling = previous && this.now() - previous.startedAt < this.rules.cooldownMs;
+        if (cooling) previous.total += e.usd;
         if (!accumulation && e.usd < this.rules.single) continue;
+        if (cooling && previous.total < previous.alertedTotal * 2) continue;
+        const trackedTotal = cooling ? previous.total : total;
+        s.unitNotifications[e.wallet] = { startedAt: cooling ? previous.startedAt : this.now(),
+          total: trackedTotal, alertedTotal: trackedTotal };
         const short = `${e.wallet.slice(0,6)}...${e.wallet.slice(-4)}`;
         const amounts = [...new Set(rows.map(r => r.asset))].map(asset =>
           `${asset.toUpperCase()} ${money(rows.filter(r => r.asset === asset).reduce((sum,r) => sum + r.usd, 0))}`).join(' + ');
         s.pending.push({ eventAt: e.at, alertId: `hyperunit:${e.depositId}`, chain: 'UNIT', wallet: e.wallet,
+          unitHistoryVerified: this.rules.freshOnly && e.history.eligible === true,
           walletLink: true, txHash: e.hash,
           title: accumulation ? 'Hyperunit — Deposit accumulation' : 'Hyperunit — Large deposit',
           body: `Receiving account: ${short}\n\n` + (accumulation ?
             `*${rows.length} deposits in ${this.rules.minutes} min*\nTotal received: *${money(total)}*\n${amounts}` :
-            `${e.asset.toUpperCase()} deposit: *${money(e.usd)}*`) + '\nDestination: Hyperliquid',
+            `${e.asset.toUpperCase()} deposit: *${money(e.usd)}*`) + '\nDestination: Hyperliquid' +
+            (cooling ? `\nTracked total since first alert: *${money(trackedTotal)}*` : '') +
+            (this.rules.freshOnly ? `\nPrior activity: ${e.history.unitOperations} Unit operations; ${e.history.ledgerTransactions} HL transfers; ${e.history.executedTrades} executed trades` : ''),
         });
         queued++;
       }
@@ -114,6 +140,8 @@ class UnitMonitor {
         }
       }
       for (const [id, at] of Object.entries(s.seen)) if (at < through - 30 * 86400000) delete s.seen[id];
+      for (const [wallet, profile] of Object.entries(s.unitProfiles)) if (profile.until < cutoff(this.now())) delete s.unitProfiles[wallet];
+      for (const [wallet, note] of Object.entries(s.unitNotifications)) if (this.now() - note.startedAt >= this.rules.cooldownMs) delete s.unitNotifications[wallet];
       s.pending = s.pending.filter(a => !this.isBlocked(a.wallet));
     });
     return queued;
@@ -125,7 +153,7 @@ class UnitMonitor {
       for (const [key, e] of Object.entries(s.unitCandidates)) if (!isFresh(e.at, now)) delete s.unitCandidates[key];
     });
     const end = Math.min(now - 30000, start + 5 * 60000);
-    let discovered = 0, matched = 0, lookupErrors = 0;
+    let discovered = 0, matched = 0, lookupErrors = 0, historyErrors = 0, filtered = 0;
     if (end >= start && Object.keys(this.store.data.unitCandidates).length < 2000) {
       const found = [];
       for (const treasury of TREASURIES) {
@@ -137,7 +165,7 @@ class UnitMonitor {
         s.cursors.UNIT = { at: end + 1 };
       });
     }
-    const waiting = Object.values(this.store.data.unitCandidates).filter(e => !e.depositId && !this.isBlocked(e.wallet))
+    const waiting = Object.values(this.store.data.unitCandidates).filter(e => (!e.depositId || (this.rules.freshOnly && !e.history)) && !this.isBlocked(e.wallet))
       .sort((a,b) => a.attempted - b.attempted || a.at - b.at);
     const wallets = [...new Set(waiting.map(e => e.wallet))].slice(0,20);
     for (const wallet of wallets) {
@@ -148,12 +176,35 @@ class UnitMonitor {
         ops = response.operations;
       } catch (err) { lookupErrors++; rateLimited = err.response?.status === 429; }
       this.store.update(s => {
-        for (const e of Object.values(s.unitCandidates).filter(e => e.wallet === wallet && !e.depositId)) {
+        for (const e of Object.values(s.unitCandidates).filter(e => e.wallet === wallet)) {
           e.attempted = now;
           const resolved = ops && matchOperation(e, ops);
           if (resolved) { s.unitCandidates[e.key] = resolved; matched++; }
         }
       });
+      if (ops && this.rules.freshOnly) {
+        const candidates = Object.values(this.store.data.unitCandidates).filter(e => e.wallet === wallet)
+          .sort((a,b) => a.at - b.at || a.key.localeCompare(b.key));
+        for (const e of candidates) {
+          if (!e.depositId) break; // Resolve the earliest receipt before anchoring its burst.
+          if (e.history) continue;
+          try {
+            let profile = this.store.data.unitProfiles[wallet];
+            if (!profile || e.at < profile.start || e.at > profile.until) {
+              // Source confirmations can reorder receipts. Anchor before the
+              // earliest known operation in this burst, not its last receipt.
+              const burst = candidates.filter(r => r.depositId && r.at >= e.at && r.at <= e.at + this.rules.minutes * 60000);
+              const operationAt = Math.min(...burst.map(r => r.operationAt));
+              const history = await assessHistory({ event: { ...e, operationAt }, operations: ops, ledger: this.ledger, fills: this.fills, rules: this.rules });
+              profile = { start: e.at, until: e.at + this.rules.minutes * 60000, history };
+            }
+            this.store.update(s => { s.unitProfiles[wallet] = profile; s.unitCandidates[e.key].history = profile.history; });
+            if (!profile.history.eligible) filtered++;
+          } catch (err) {
+            historyErrors++; rateLimited = err.response?.status === 429; break;
+          }
+        }
+      }
       if (rateLimited) break; // Do not spend the remaining lookup budget on a throttled endpoint.
     }
     const through = this.store.data.cursors.UNIT?.at ?? start;
@@ -161,7 +212,7 @@ class UnitMonitor {
     await this.flush();
     const pending = Object.values(this.store.data.unitCandidates);
     this.lastScan = { through, lagSeconds: Math.max(0, Math.floor((now - through) / 1000)),
-      discovered, matched, queued, pending: pending.length, lookupErrors,
+      discovered, matched, queued, pending: pending.length, lookupErrors, historyErrors, filtered,
       oldestPendingMinutes: pending.length ? Math.floor((now - Math.min(...pending.map(e => e.at))) / 60000) : 0 };
   }
 }
