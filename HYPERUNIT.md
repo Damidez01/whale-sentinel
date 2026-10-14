@@ -1,5 +1,19 @@
 # Hyperunit deposits
 
+## Tornado 100 ETH withdrawal → Hyperunit deposit
+
+Enabled by default alongside the Hyperunit monitor. A separate alert fires when the actual recipient of a withdrawal from Ethereum's 100 ETH Tornado pool subsequently sends ETH directly to its Unit deposit address, and the deposit is credited to Hyperliquid. The source wallet and Hyperliquid account may differ. The alert links both Ethereum transactions and shows the deposited amount and elapsed time.
+
+The default withdrawal-to-deposit window is 24 hours (`TC_HYPERUNIT_LOOKBACK_HOURS=24`). Set `TC_HYPERUNIT_ENABLED=false` to disable this alert. It requires the existing `ALCHEMY_ETH_WSS` and `ETHERSCAN_API_KEY`; missing configuration produces a warning. `HYPERUNIT_ENABLED=false` disables both ordinary and Tornado-linked Unit monitoring.
+
+Verification checks the successful source transaction, its actual sender and Unit destination, 12 subsequent Ethereum blocks, canonical block hashes, and the exact pool Withdrawal event recipient. A relayer, a 10 ETH pool withdrawal, a later withdrawal, or an intermediate wallet does not qualify. This is a same-wallet sequence, not proof of theft or proof that every deposited ETH came from Tornado.
+
+There is no minimum deposit amount and the ordinary low-activity filters and doubling cooldown do not suppress this separate signal. Each source deposit and receiving account alerts once. An immediately verified Tornado match replaces the ordinary alert for that deposit; delayed verification can produce a separate follow-up after an ordinary alert. Blocking either the source or receiver suppresses the signal.
+
+Withdrawal evidence uses up to five pages of 100 Etherscan internal transactions, then verifies receipts through Ethereum RPC. Up to 20 deposits are checked per poll. Provider failures and incomplete evidence remain queued across restarts; verified negative matches are remembered. The existing 30-minute freshness limit applies to the Hyperliquid credit, so old completed deposits are not replayed. Pending evidence expires at that limit. No multi-hop tracing is performed. The scan log includes `tornadoQueued`, `tornadoPending`, and `tornadoErrors`.
+
+## Ordinary deposit alerts
+
 Read-only API smoke check: `node scripts/check-hyperunit.js` (last 15 minutes), or supply a lookback in minutes up to 360. It reports real receipt/operation matches without loading bot credentials, sending messages or changing monitor state. An empty interval is not a successful matching test.
 
 Enabled by default. Watches BTC and ETH credited by Unit to Hyperliquid accounts. BTC remains BTC (UBTC); ETH remains ETH (UETH). A receiver's 0x address is its Hyperliquid account, not evidence of a BTC-to-ETH swap. SOL, withdrawals, trading and unrelated internal transfers are excluded.
@@ -34,7 +48,7 @@ The monitor uses the [Unit operations API](https://docs.hyperunit.xyz/developers
 
 Unknown histories are retried within the existing 30-minute freshness limit, then expire. No extra API key is needed. The receiver lookups share the existing 20-wallet-per-poll budget, stop on rate limits, and reuse a saved history assessment within the burst. Upgrade discards old Unit alerts lacking history verification from monitor and Telegram queues, and excludes unverified accumulation rows; blocked wallets and delivered-deposit dedup remain saved. `HYPERUNIT_FRESH_ONLY=false` disables the history filter, while the cooldown remains active. Prior-count settings accept nonnegative integers, including zero for first-use-only filtering.
 
-Discovery uses the [published BTC and ETH HyperCore treasuries](https://docs.hyperunit.xyz/developers/key-addresses/mainnet), queried through Hyperliquid's `userNonFundingLedgerUpdates`. Every candidate must match a completed [Unit operation](https://docs.hyperunit.xyz/developers/api/operations) by treasury address and nonce, destination, asset and source chain. The ledger's `usdcValue` supplies the estimated USD value of the credited funds; there is no price-service or Alchemy call. No new API key is needed. Public endpoints still have rate limits and can be unavailable.
+Discovery uses the [published BTC and ETH HyperCore treasuries](https://docs.hyperunit.xyz/developers/key-addresses/mainnet), queried through Hyperliquid's `userNonFundingLedgerUpdates`. Every candidate must match a completed [Unit operation](https://docs.hyperunit.xyz/developers/api/operations) by treasury address and nonce, destination, asset and source chain. The ledger's `usdcValue` supplies the estimated USD value of the credited funds; ordinary alerts need no price-service or Alchemy call. The separate Tornado correlation uses Ethereum RPC and Etherscan as described above. Public endpoints still have rate limits and can be unavailable.
 
 Durable state is `hyperunit-state.json` on the existing `/data` volume (or `TELEGRAM_DATA_DIR`). Keep one replica. First start examines the preceding 15 minutes in five-minute slices. Later scans stop 30 seconds behind current time and skip history older than `ALERT_MAX_AGE_MIN` (30 by default). Full 500-record treasury ledger pages split their time range; a saturated timestamp or page budget failure retains the cursor. Both treasuries must succeed before saving the discovery cursor. Deposits waiting for Unit indexing or history checks remain saved separately, with up to 20 receiver lookups per poll in rotation. At 2,000 pending receipts discovery pauses until verification catches up. Receipts expire when they exceed the freshness limit.
 

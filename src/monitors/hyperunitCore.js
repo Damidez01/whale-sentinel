@@ -1,5 +1,6 @@
 const { cutoff, isFresh, freshAlert } = require('../utils/freshness');
 const { assessHistory } = require('./hyperunitHistory');
+const { tornadoUnitAlert } = require('./tornadoUnit');
 const TREASURIES = [
   { asset: 'btc', token: 'UBTC', chain: 'bitcoin', address: '0x574bafce69d9411f662a433896e74e4f153096fa' },
   { asset: 'eth', token: 'UETH', chain: 'ethereum', address: '0x8dafbe89302656a7df43c470e9ebcb4c540835c0' },
@@ -66,16 +67,17 @@ function matchOperation(e, operations) {
   if (!(e.asset === 'btc' ? /^[0-9a-f]{64}$/i : /^0x[0-9a-f]{64}$/i).test(sourceHash) ||
       !op.operationId || op.operationId !== op.sourceTxHash) return null;
   return { ...e, operationId: op.operationId, operationAt: Date.parse(op.opCreatedAt), sourceHash, source: op.sourceAddress,
-    depositId: `${e.asset}:${lower(sourceHash)}:${e.wallet}` };
+    protocolAddress: op.protocolAddress, depositId: `${e.asset}:${lower(sourceHash)}:${e.wallet}` };
 }
 
 class UnitMonitor {
-  constructor({ store, rules = unitSettings(), ledger, operations, fills, sendAlert, isBlocked = () => false, now = Date.now }) {
-    Object.assign(this, { store, rules, ledger, operations, fills, sendAlert, isBlocked, now });
+  constructor({ store, rules = unitSettings(), ledger, operations, fills, tornadoMatch, sendAlert, isBlocked = () => false, now = Date.now }) {
+    Object.assign(this, { store, rules, ledger, operations, fills, tornadoMatch, sendAlert, isBlocked, now });
     store.update(s => {
       s.unitCandidates ||= {}; s.unitProfiles ||= {}; s.unitNotifications ||= {};
+      s.unitTornadoPending ||= {}; s.unitTornadoSeen ||= {};
       if (rules.freshOnly) {
-        s.pending = s.pending.filter(a => a.unitHistoryVerified === true);
+        s.pending = s.pending.filter(a => a.unitHistoryVerified === true || a.tcUnitVerified === true);
         for (const [wallet, rows] of Object.entries(s.windows))
           s.windows[wallet] = rows.filter(e => e.history?.eligible === true);
       }
@@ -83,7 +85,7 @@ class UnitMonitor {
   }
   async flush() {
     for (const alert of [...this.store.data.pending]) {
-      if ((!this.rules.freshOnly || alert.unitHistoryVerified === true) && freshAlert(alert, this.now()) && !this.isBlocked(alert.wallet)) await this.sendAlert(alert);
+      if ((!this.rules.freshOnly || alert.unitHistoryVerified === true || alert.tcUnitVerified === true) && freshAlert(alert, this.now()) && ![alert.wallet, ...(alert.countedWallets || [])].some(w => this.isBlocked(w))) await this.sendAlert(alert);
       this.store.update(s => { s.pending = s.pending.filter(a => a.alertId !== alert.alertId); });
     }
   }
@@ -98,6 +100,7 @@ class UnitMonitor {
           delete s.windows[e.wallet]; delete s.unitCandidates[e.key];
           continue;
         }
+        if (e.tornadoMatched) { s.seen[e.depositId] = e.at; delete s.unitCandidates[e.key]; continue; }
         if (!e.depositId || (this.rules.freshOnly && !e.history)) { held.add(e.wallet); continue; }
         if (held.has(e.wallet)) continue; // Never evaluate a receiver out of receipt order.
         delete s.unitCandidates[e.key];
@@ -207,13 +210,43 @@ class UnitMonitor {
       }
       if (rateLimited) break; // Do not spend the remaining lookup budget on a throttled endpoint.
     }
+    const tornado = await this.checkTornado();
     const through = this.store.data.cursors.UNIT?.at ?? start;
     const queued = this.commitReady(through);
     await this.flush();
     const pending = Object.values(this.store.data.unitCandidates);
     this.lastScan = { through, lagSeconds: Math.max(0, Math.floor((now - through) / 1000)),
-      discovered, matched, queued, pending: pending.length, lookupErrors, historyErrors, filtered,
+      discovered, matched, queued, pending: pending.length, lookupErrors, historyErrors, filtered, ...tornado,
       oldestPendingMinutes: pending.length ? Math.floor((now - Math.min(...pending.map(e => e.at))) / 60000) : 0 };
+  }
+  async checkTornado() {
+    let tornadoQueued = 0, tornadoErrors = 0;
+    if (!this.tornadoMatch) return {};
+    this.store.update(s => {
+      for (const e of Object.values(s.unitCandidates)) {
+        if (e.asset === 'eth' && e.depositId && !s.unitTornadoSeen[e.depositId] && !s.unitTornadoPending[e.depositId])
+          s.unitTornadoPending[e.depositId] = { ...e, tornadoAttempted: 0 };
+      }
+      for (const [id,e] of Object.entries(s.unitTornadoPending))
+        if (!isFresh(e.at, this.now()) || [e.wallet,e.source].some(w => this.isBlocked(w))) delete s.unitTornadoPending[id];
+      for (const [id,at] of Object.entries(s.unitTornadoSeen)) if (at < this.now() - 30 * 86400000) delete s.unitTornadoSeen[id];
+    });
+    const entries = Object.values(this.store.data.unitTornadoPending).sort((a,b) => a.tornadoAttempted - b.tornadoAttempted || a.at - b.at).slice(0,20);
+    for (const e of entries) {
+      this.store.update(s => { s.unitTornadoPending[e.depositId].tornadoAttempted = this.now(); });
+      try {
+        const match = await this.tornadoMatch(e);
+        this.store.update(s => {
+          if (match && isFresh(e.at, this.now()) && ![e.wallet,e.source].some(w => this.isBlocked(w))) {
+            s.pending.push(tornadoUnitAlert(e, match)); tornadoQueued++;
+            if (s.unitCandidates[e.key]) s.unitCandidates[e.key].tornadoMatched = true;
+          }
+          s.unitTornadoSeen[e.depositId] = e.at;
+          delete s.unitTornadoPending[e.depositId];
+        });
+      } catch { tornadoErrors++; }
+    }
+    return { tornadoQueued, tornadoErrors, tornadoPending: Object.keys(this.store.data.unitTornadoPending).length };
   }
 }
 module.exports = { TREASURIES, unitSettings, collectLedger, candidate, matchOperation, UnitMonitor };

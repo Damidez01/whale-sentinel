@@ -32,6 +32,53 @@ function fixture(t, options = {}) {
     ...options };
   return { store, sent, args, monitor: new UnitMonitor(args) };
 }
+
+test('Tornado signal bypasses ordinary history and amount filters; survives restart and deduplicates', async t => {
+  let failing = true;
+  const f = fixture(t, { rows: [row(91,100,NOW-60000,1)],
+    tornadoMatch: async e => {
+      if (failing) throw Error('provider unavailable');
+      return { source: A, withdrawalHash: '0x'+'a'.repeat(64), withdrawalAt:e.at-120000,
+        depositHash:e.sourceHash, depositAt:e.at-60000, depositEth:0.04 };
+    }, fills: async () => { throw Error('history unavailable'); } });
+  await f.monitor.poll();
+  assert.equal(f.sent.length,0); assert.equal(f.monitor.lastScan.tornadoPending,1);
+  failing = false;
+  const restarted = new UnitMonitor({ ...f.args, store: new ExchangeStore(f.store.file) });
+  await restarted.poll();
+  assert.equal(f.sent.length,1); assert.equal(f.sent[0].tcUnitVerified,true);
+  await restarted.poll(); assert.equal(f.sent.length,1);
+});
+
+test('verified Tornado deposit replaces generic alert and retains failed delivery', async t => {
+  const f = fixture(t, { rows:[row(92,60000,NOW-60000,1)], tornadoMatch:async e => ({
+    source:A, withdrawalHash:'0x'+'a'.repeat(64), withdrawalAt:e.at-120000,
+    depositHash:e.sourceHash, depositAt:e.at-60000, depositEth:20,
+  }), sendAlert:async () => { throw Error('delivery failed'); } });
+  await assert.rejects(f.monitor.poll(),/delivery failed/);
+  assert.equal(f.store.data.pending.length,1); assert.equal(f.store.data.pending[0].tcUnitVerified,true);
+  const restarted = new UnitMonitor({ ...f.args, sendAlert:a => f.sent.push(a) });
+  await restarted.poll(); assert.equal(f.sent.length,1);
+});
+
+test('Tornado pending survives removal by ordinary history filters and respects blocked source', async t => {
+  let failing = true;
+  const f = fixture(t, { rows:[row(93,100,NOW-60000,1)], tornadoMatch:async e => {
+    if (failing) throw Error('temporary failure');
+    return { source:A, withdrawalHash:'0x'+'a'.repeat(64), withdrawalAt:e.at-120000,
+      depositHash:e.sourceHash, depositAt:e.at-60000, depositEth:1 };
+  }});
+  f.store.update(s => { s.unitProfiles[A] = { start:NOW-120000, until:NOW+60000, history:{ eligible:false } }; });
+  await f.monitor.poll();
+  assert.equal(Object.keys(f.store.data.unitCandidates).length,0);
+  assert.equal(Object.keys(f.store.data.unitTornadoPending).length,1);
+  failing = false;
+  await f.monitor.poll(); assert.equal(f.sent.length,1);
+  const blocked = fixture(t, { rows:[row(94,100,NOW-60000,1)],
+    isBlocked:w => w === 'unrelated-source-94', tornadoMatch:async () => { throw Error('must not look up blocked wallet'); } });
+  await blocked.monitor.poll();
+  assert.equal(blocked.monitor.lastScan.tornadoErrors,0); assert.equal(blocked.sent.length,0);
+});
 test('50k single threshold is inclusive; different wallets do not consolidate', async t => {
   const f = fixture(t, { rows: [row(1,49999), row(2,50000,NOW-60000,1,B)] });
   await f.monitor.poll();
