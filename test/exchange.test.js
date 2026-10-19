@@ -150,11 +150,31 @@ test('Ethereum reuses cached full blocks, filters both directions and deduplicat
   assert.equal(f.store.data.pending.length,1); assert.equal(f.store.data.cursors.ETH.number,100);
   assert.deepEqual(f.calls.map(c=>c[0]),['eth_getLogs','eth_getLogs']);
   assert.equal(f.calls[0][1][0].topics[2].length,3); assert.equal(f.calls[1][1][0].topics[1].length,3);
-  assert.equal(f.calls[0][1][0].address.length,2);
+  assert.equal(f.calls[0][1][0].address.length,3);
 });
 test('Ethereum failed log/price requests never advance the dedicated cursor', async t => {
   const f = ethFixture(t,()=>{throw Error('quota');}); await assert.rejects(f.feed.poll(),/quota/); assert.equal(f.store.data.cursors.ETH,undefined);
   const g = ethFixture(t); g.feed.price=async()=>null; await assert.rejects(g.feed.poll(),/price unavailable/); assert.equal(g.store.data.cursors.ETH,undefined);
+});
+
+test('DAI uses 18 decimals and one-hop accumulation groups by original source', async t => {
+  const dai='0x6b175474e89094c44da98b954eedeac495271d0f', amount=50000n*10n**18n;
+  const f=ethFixture(t);
+  for(const log of f.logs) { log.address=dai; log.data='0x'+amount.toString(16).padStart(64,'0'); }
+  f.feed.filterEvents=async events=>Promise.all(events.map(async e=>{
+    assert.equal(e.usd,50000); assert.equal(e.amount,amount.toString()); assert.equal(e.token,dai);
+    const route=await require('../src/monitors/exchangeHop').traceOrigin(e,{rules,rpc:async(method,[p])=>{
+      assert.deepEqual(p.contractAddresses,[dai]);
+      const incoming=!!p.toAddress;
+      return {transfers:[{hash:incoming?'fund'+e.hash:e.hash,from:incoming?C:B,to:incoming?B:A,
+        blockNum:incoming?'0x63':'0x64',rawContract:{address:dai,value:'0x'+amount.toString(16)},
+        metadata:{blockTimestamp:new Date(e.at-(incoming?1000:0)).toISOString()}}]};
+    }});
+    return {...e,...route};
+  }));
+  await f.feed.poll();
+  assert.equal(f.store.data.pending.length,1); assert.equal(f.store.data.pending[0].wallet,C);
+  assert.match(f.store.data.pending[0].body,/DAI \$150,000/);
 });
 test('native ETH is excluded without receipt or price requests', async t => {
   const f = ethFixture(t,(m,p)=>m==='eth_getLogs'?[]:{ transactionHash:p[0],blockHash:'h100',status:'0x0' });

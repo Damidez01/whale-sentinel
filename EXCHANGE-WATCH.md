@@ -12,7 +12,7 @@ The existing thresholds remain: three qualifying transfers/routes, each forward 
 
 Alerts name the original source, link up to five deposit routes with funding and forwarding transactions, and include all counted original/intermediate/hot addresses for blocking. Blocking any counted address removes the affected window rows and suppresses pending summaries. Verified history and attribution are cached per deposit event and settings and persist across restarts. Failed lookups retain the scan cursor for retry; there is no attribution from missing evidence. Set `EXCHANGE_ONE_HOP=false` to restore immediate-sender grouping for new events.
 
-Asset scope: **Ethereum USDC/USDT; TRON USDT/native TRX**. Native ETH, DAI, wrapped TRX and TRON USDC are not monitored by this exchange module. Other bot modules keep their own asset rules. Upgrading clears old inflow windows and legacy queued exchange summaries that may contain removed assets; cursors, event dedup and blocks remain intact. The 30-minute alert freshness limit still prevents replaying old deposits on deployment.
+Asset scope: **Ethereum USDC/USDT/DAI; TRON USDT/native TRX**. Native ETH, wrapped TRX and TRON USDC are not monitored by this exchange module. Other bot modules keep their own asset rules. Upgrading clears old inflow windows and legacy queued exchange summaries that may contain removed assets; cursors, event dedup and blocks remain intact. The 30-minute alert freshness limit still prevents replaying old deposits on deployment.
 
 | Service label | Chain | Watched address |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ On upgrade, old exchange-wide incoming windows and unsent incoming summaries are
 
 ## Assets and providers
 
-Ethereum: **USDC and USDT** only. The Ethereum block feed already used by the original bot is shared with this monitor. The dedicated monitor waits for 12 confirmations by default. Token queries filter by the exact two official token contracts and watched sender/recipient addresses before results reach the bot. The old broad token subscription remains disabled. Native ETH does not generate exchange events or receipt/price lookups.
+Ethereum: **USDC, USDT and DAI** only. The Ethereum block feed already used by the original bot is shared with this monitor. The dedicated monitor waits for 12 confirmations by default. Token queries filter by the exact three official token contracts and watched sender/recipient addresses before results reach the bot. The old broad token subscription remains disabled. Native ETH does not generate exchange events or receipt/price lookups.
 
 TRON: **TRX** and official **USDT (TRC-20)**, with confirmed account-history requests to TronGrid for the two watched addresses. TRON addresses are checksum-validated and preserve case. Telegram blocking/buttons/reply controls now support TRON too.
 

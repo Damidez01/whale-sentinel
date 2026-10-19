@@ -92,7 +92,7 @@ function startExchangeMonitor() {
     const freshRpc = makeRpc([process.env.ALCHEMY_ETH_WSS, process.env.ALCHEMY_ETH_FALLBACK]);
     const fresh = new FreshDeposits({ engine, rules, rpc: freshRpc });
     ethereum = new EthereumExchangeFeed({ engine, rules, price, rpc, filterEvents: events => fresh.filter(events) });
-    feeds.push(['ETH', ethereum]); modules.push('Exchange watch — 3 Ethereum wallets (USDC/USDT; one-hop tracing)');
+    feeds.push(['ETH', ethereum]); modules.push('Exchange watch — 3 Ethereum wallets (USDC/USDT/DAI; one-hop tracing)');
   }
   if (process.env.TRONGRID_API_KEY) {
     let nextRequestAt = 0;

@@ -110,13 +110,13 @@ test('history failures defer; truncated same-asset evidence cannot infer a route
   assert.equal(await traceOrigin(e,{rules:settings({}),rpc:async()=>({transfers:[],pageKey:'next'})}),null);
 });
 
-test('one funding transaction split into three sweeps is not three deposits; ETH and DAI never count', t => {
+test('one funding transaction split into three sweeps is not three deposits; native ETH never counts', t => {
   const f=setup(t), now=Date.now()-10000;
   const rows=[1,2,3].map(i=>({chain:'ETH',symbol:'USDT',from:evidence.wallets[0].address,to:hot,
     originalSource:evidence.original,fundingHashes:['one-funding'],freshApproved:true,
     at:now+i,hash:'sweep'+i,id:'sweep'+i,usd:50000}));
   f.engine.commit(rows); assert.equal(f.store.data.pending.length,0);
-  for(const symbol of ['ETH','DAI']) f.engine.commit(rows.map((r,i)=>({...r,symbol,id:symbol+i,hash:symbol+i,fundingHashes:['fund'+i]})));
+  for(const symbol of ['ETH']) f.engine.commit(rows.map((r,i)=>({...r,symbol,id:symbol+i,hash:symbol+i,fundingHashes:['fund'+i]})));
   assert.equal(f.store.data.pending.length,0);
   assert.equal(Object.values(f.store.data.windows).flat().length,3);
 });

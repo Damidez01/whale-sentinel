@@ -4,6 +4,7 @@ const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 const TOKENS = {
   '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { symbol: 'USDC', decimals: 6 },
   '0xdac17f958d2ee523a2206206994597c13d831ec7': { symbol: 'USDT', decimals: 6 },
+  '0x6b175474e89094c44da98b954eedeac495271d0f': { symbol: 'DAI', decimals: 18 },
 };
 const TRON_USDT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const hex = n => '0x' + n.toString(16);
@@ -72,7 +73,10 @@ class EthereumExchangeFeed {
         if (!(quote > 0) || !Number.isFinite(quote)) throw Error(`Exchange ${symbol} price unavailable; retaining cursor`);
         quotes.set(symbol, quote);
       }
-      return Number(BigInt(raw)) / 10 ** decimals * quotes.get(symbol);
+      // Format base units before converting to Number: casting an 18-decimal
+      // integer first can round an exact 50,000 DAI below the USD threshold.
+      const digits = BigInt(raw).toString().padStart(decimals + 1, '0');
+      return Number(digits.slice(0, -decimals) + '.' + digits.slice(-decimals)) * quotes.get(symbol);
     };
     for (const block of blocks) {
       const number = Number(BigInt(block.number)), at = Number(BigInt(block.timestamp)) * 1000;

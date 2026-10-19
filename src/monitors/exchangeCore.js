@@ -64,7 +64,7 @@ class ExchangeEngine {
       if (!this.rules.fanoutEnabled && key.endsWith(':out')) {
         delete s.windows[key]; delete s.notified[key]; continue;
       }
-      const kept = rows.filter(e => (e.chain === 'ETH' ? ['USDC','USDT'] : ['USDT','TRX']).includes(e.symbol) && !this.isBlocked(e.from) && !this.isBlocked(e.to) && !(e.originalSource && this.isBlocked(e.originalSource)) &&
+      const kept = rows.filter(e => (e.chain === 'ETH' ? ['USDC','USDT','DAI'] : ['USDT','TRX']).includes(e.symbol) && !this.isBlocked(e.from) && !this.isBlocked(e.to) && !(e.originalSource && this.isBlocked(e.originalSource)) &&
         !(this.rules.freshOnly && key.endsWith(':in') && !e.freshApproved));
       if (kept.length !== rows.length) {
         s.windows[key] = kept;
@@ -80,7 +80,7 @@ class ExchangeEngine {
       this.pruneBlocked(s);
       const sorted = [...events].sort((a,b) => a.at - b.at || (a.order || 0) - (b.order || 0));
       for (const raw of sorted) {
-        if (!(raw.chain === 'ETH' ? ['USDC','USDT'] : ['USDT','TRX']).includes(raw.symbol)) continue;
+        if (!(raw.chain === 'ETH' ? ['USDC','USDT','DAI'] : ['USDT','TRX']).includes(raw.symbol)) continue;
         if (!isFresh(raw.at)) continue;
         const e = { ...raw, from: normalizeWallet(raw.from), to: normalizeWallet(raw.to) };
         if (!e.from || !e.to || e.from === e.to || !Number.isFinite(e.at) || !Number.isFinite(e.usd) || e.usd < 0 || !e.id || !e.hash) continue;
