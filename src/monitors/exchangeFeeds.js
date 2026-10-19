@@ -4,7 +4,6 @@ const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 const TOKENS = {
   '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { symbol: 'USDC', decimals: 6 },
   '0xdac17f958d2ee523a2206206994597c13d831ec7': { symbol: 'USDT', decimals: 6 },
-  '0x6b175474e89094c44da98b954eedeac495271d0f': { symbol: 'DAI', decimals: 18 },
 };
 const TRON_USDT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const hex = n => '0x' + n.toString(16);
@@ -78,17 +77,6 @@ class EthereumExchangeFeed {
     for (const block of blocks) {
       const number = Number(BigInt(block.number)), at = Number(BigInt(block.timestamp)) * 1000;
       if (!Number.isFinite(at)) throw Error('Invalid exchange block timestamp');
-      for (const tx of block.transactions) {
-        const from = normalizeWallet(tx.from), to = normalizeWallet(tx.to);
-        if (!from || !to || (!this.addresses.includes(from) && !this.addresses.includes(to)) || BigInt(tx.value || '0') === 0n) continue;
-        if (!this.rules.fanoutEnabled && !this.addresses.includes(to)) continue;
-        const usd = await value(tx.value, 18, 'ETH');
-        if (usd < Math.min(this.rules.min, this.rules.fanoutMin)) continue;
-        const receipt = await this.rpc('eth_getTransactionReceipt', [tx.hash]);
-        if (!receipt || receipt.blockHash !== block.hash || receipt.transactionHash !== tx.hash || !['0x0','0x1'].includes(receipt.status)) throw Error('Exchange ETH receipt missing or mismatched');
-        if (receipt.status !== '0x1') continue;
-        events.push({ id: tx.hash, hash: tx.hash, chain: 'ETH', symbol: 'ETH', from, to, usd, at, blockNumber: number, order: Number(BigInt(tx.transactionIndex || '0')) * 100000 });
-      }
       for (const log of logs.filter(l => Number(BigInt(l.blockNumber)) === number)) {
         if (log.removed || log.blockHash !== block.hash) throw Error('Exchange token log ancestry mismatch');
         if (!block.transactions.some(tx => tx.hash === log.transactionHash)) throw Error('Exchange token transaction missing from block');
@@ -97,7 +85,7 @@ class EthereumExchangeFeed {
         const from = '0x' + log.topics[1].slice(-40), to = '0x' + log.topics[2].slice(-40);
         if (!this.addresses.includes(from.toLowerCase()) && !this.addresses.includes(to.toLowerCase())) throw Error('Token result outside watched wallets');
         const usd = await value(log.data, token.decimals, token.symbol);
-        events.push({ id: `${log.transactionHash}:${log.logIndex}`, hash: log.transactionHash, chain: 'ETH', symbol: token.symbol, from, to, usd, at, blockNumber: number,
+        events.push({ id: `${log.transactionHash}:${log.logIndex}`, hash: log.transactionHash, chain: 'ETH', symbol: token.symbol, token:log.address.toLowerCase(), amount:BigInt(log.data).toString(), from, to, usd, at, blockNumber: number,
           order: Number(BigInt(log.transactionIndex || '0')) * 100000 + Number(BigInt(log.logIndex)) + 1 });
       }
     }
@@ -151,7 +139,7 @@ class TronExchangeFeed {
         if (row.from !== wallet.address && row.to !== wallet.address) throw Error('TronGrid transfer outside requested wallet');
         events.push({ chain: 'TRON', symbol: 'USDT', hash: row.transaction_id,
           id: `${row.transaction_id}:${row.event_index ?? `${row.from}:${row.to}:${row.value}`}:USDT`,
-          from: row.from, to: row.to, at: row.block_timestamp, usd: await usdValue(row.value, 'USDT') });
+          from: row.from, to: row.to, amount:String(row.value), at: row.block_timestamp, usd: await usdValue(row.value, 'USDT') });
       }
       const transactions = await this.pages(wallet.address, false, start, end);
       for (const tx of transactions) {
@@ -164,7 +152,7 @@ class TronExchangeFeed {
           const from = tronFromHex(fields?.owner_address), to = tronFromHex(fields?.to_address);
           if (!from || !to) throw Error('Invalid TRX transfer address');
           if (from !== wallet.address && to !== wallet.address) continue;
-          events.push({ chain: 'TRON', symbol: 'TRX', hash: tx.txID, id: `${tx.txID}:${index}:TRX`, from, to, at: tx.block_timestamp, usd: await usdValue(fields.amount, 'TRX') });
+          events.push({ chain: 'TRON', symbol: 'TRX', hash: tx.txID, id: `${tx.txID}:${index}:TRX`, from, to, amount:String(fields.amount), at: tx.block_timestamp, usd: await usdValue(fields.amount, 'TRX') });
         }
       }
     }

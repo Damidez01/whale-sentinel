@@ -1,4 +1,5 @@
 const { normalizeWallet } = require('../utils/addresses');
+const { traceOrigin } = require('./exchangeHop');
 
 class FreshDeposits {
   constructor({ engine, rules, rpc, request }) { Object.assign(this, { engine, rules, rpc, request }); }
@@ -37,24 +38,26 @@ class FreshDeposits {
     return e.at - Math.min(...eligible.map(r => r.at)) <= this.rules.freshMaxHours * 3600000;
   }
   async filter(events) {
-    if (!this.rules.freshOnly) return events;
+    if (!this.rules.freshOnly && !this.rules.oneHop) return events;
     const result = [];
     for (const raw of events) {
       const e = { ...raw, from: normalizeWallet(raw.from), to: normalizeWallet(raw.to) };
       const incoming = this.engine.wallets.some(w => w.chain === e.chain && w.address === e.to);
       if (!incoming || e.usd < this.rules.min) { result.push(e); continue; }
       if (this.engine.isBlocked(e.from) || this.engine.isBlocked(e.to)) continue;
-      const key = `${e.chain}:${e.from}:${e.hash}:${this.rules.freshMaxTx}:${this.rules.freshMaxHours}`;
+      const key = `hop1:${!!this.rules.oneHop}:${!!this.rules.freshOnly}:${e.chain}:${e.from}:${e.id}:${this.rules.freshMaxTx}:${this.rules.freshMaxHours}`;
       let verdict = this.engine.store.data.freshChecks?.[key];
       if (!verdict) {
-        verdict = { ok: await this.inspect(e), at: Date.now() };
+        verdict = { ok: !this.rules.freshOnly || await this.inspect(e), at: Date.now() };
+        if (verdict.ok && this.rules.oneHop) verdict.route = await traceOrigin(e, this);
         this.engine.store.update(s => {
           s.freshChecks ||= {}; s.freshChecks[key] = verdict;
           for (const [k,v] of Object.entries(s.freshChecks)) if (v.at < Date.now() - 2 * 86400000) delete s.freshChecks[k];
           for (const k of Object.keys(s.freshChecks).slice(0, -10000)) delete s.freshChecks[k];
         });
       }
-      result.push({ ...e, freshApproved: verdict.ok });
+      if (verdict.route && (this.engine.isBlocked(verdict.route.originalSource) || this.engine.wallets.some(w => w.address === verdict.route.originalSource))) continue;
+      result.push({ ...e, freshApproved: verdict.ok, ...verdict.route });
     }
     return result;
   }

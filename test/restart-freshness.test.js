@@ -54,7 +54,7 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     d.queue.push({ id: 'thor-old', alert: { alertId: 'thor:swap:old', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'thor-new', alert: { alertId: 'thor:swap:new', eventAt: NOW, thorHistoryVerified: true }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'exchange-old', alert: { alertId: 'exchange:ETH:hot:in:old:3', eventAt: NOW }, at: NOW, nextAttempt: 0 });
-    d.queue.push({ id: 'exchange-new', alert: { alertId: 'exchange:ETH:hot:source:in:new:3', eventAt: NOW, sourceGrouped: true }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'exchange-new', alert: { alertId: 'exchange:ETH:hot:source:in:new:3', eventAt: NOW, sourceGrouped: true, exchangeAssetScope: 1 }, at: NOW, nextAttempt: 0 });
   });
   const sandbox = { module: { exports: {} }, process: { env: {} }, require: name => {
     if (name === 'node-telegram-bot-api') return class {};

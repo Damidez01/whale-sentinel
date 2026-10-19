@@ -38,6 +38,7 @@ function settings(env = process.env) {
     maxBlocks: positive('EXCHANGE_ETH_MAX_BLOCKS', 25, true),
     maxPages: positive('EXCHANGE_TRON_MAX_PAGES', 20, true),
     freshOnly: env.EXCHANGE_FRESH_ONLY !== 'false',
+    oneHop: env.EXCHANGE_ONE_HOP !== 'false',
     freshMaxTx: Math.min(100, positive('EXCHANGE_FRESH_MAX_TX', 10, true)),
     freshMaxHours: positive('EXCHANGE_FRESH_MAX_HOURS', 48),
   };
@@ -51,11 +52,11 @@ class ExchangeEngine {
     this.wallets = wallets.map(w => ({ ...w, address: normalizeWallet(w.address) }));
     if (this.wallets.some(w => !w.address || !['ETH','TRON'].includes(w.chain))) throw Error('Invalid exchange watchlist');
     store.update(s => {
-      if (s.inflowGroupingVersion !== 2) {
+      if (s.inflowGroupingVersion !== 3) {
         for (const key of Object.keys(s.windows)) if (key.endsWith(':in')) { delete s.windows[key]; delete s.notified[key]; }
-        s.inflowGroupingVersion = 2;
+        s.inflowGroupingVersion = 3;
       }
-      s.pending = s.pending.filter(a => !a.alertId?.includes(':in:') || a.sourceGrouped === true);
+      s.pending = s.pending.filter(a => a.exchangeAssetScope === 1 && (!a.alertId?.includes(':in:') || a.sourceGrouped === true));
     });
   }
   pruneBlocked(s) {
@@ -63,7 +64,7 @@ class ExchangeEngine {
       if (!this.rules.fanoutEnabled && key.endsWith(':out')) {
         delete s.windows[key]; delete s.notified[key]; continue;
       }
-      const kept = rows.filter(e => !this.isBlocked(e.from) && !this.isBlocked(e.to) &&
+      const kept = rows.filter(e => (e.chain === 'ETH' ? ['USDC','USDT'] : ['USDT','TRX']).includes(e.symbol) && !this.isBlocked(e.from) && !this.isBlocked(e.to) && !(e.originalSource && this.isBlocked(e.originalSource)) &&
         !(this.rules.freshOnly && key.endsWith(':in') && !e.freshApproved));
       if (kept.length !== rows.length) {
         s.windows[key] = kept;
@@ -79,13 +80,14 @@ class ExchangeEngine {
       this.pruneBlocked(s);
       const sorted = [...events].sort((a,b) => a.at - b.at || (a.order || 0) - (b.order || 0));
       for (const raw of sorted) {
+        if (!(raw.chain === 'ETH' ? ['USDC','USDT'] : ['USDT','TRX']).includes(raw.symbol)) continue;
         if (!isFresh(raw.at)) continue;
         const e = { ...raw, from: normalizeWallet(raw.from), to: normalizeWallet(raw.to) };
         if (!e.from || !e.to || e.from === e.to || !Number.isFinite(e.at) || !Number.isFinite(e.usd) || e.usd < 0 || !e.id || !e.hash) continue;
         if (e.usd < Math.min(this.rules.min, this.rules.fanoutMin)) continue;
         const id = `${e.chain}:${e.id}`;
         if (s.seen[id]) continue;
-        if (this.isBlocked(e.from) || this.isBlocked(e.to)) { s.seen[id] = e.at; continue; }
+        if (this.isBlocked(e.from) || this.isBlocked(e.to) || (e.originalSource && this.isBlocked(e.originalSource))) { s.seen[id] = e.at; continue; }
         for (const wallet of this.wallets.filter(w => w.chain === e.chain)) {
           const direction = e.to === wallet.address ? 'in' : e.from === wallet.address ? 'out' : null;
           if (!direction) continue;
@@ -96,13 +98,15 @@ class ExchangeEngine {
           const min = accumulation ? this.rules.min : this.rules.fanoutMin;
           if (e.usd < min) continue;
           const windowMs = (accumulation ? this.rules.minutes : this.rules.fanoutMinutes) * 60000;
-          const key = accumulation ? `${e.chain}:${wallet.address}:${e.from}:in` : `${e.chain}:${wallet.address}:out`;
+          const source = e.originalSource || e.from;
+          const key = accumulation ? `${e.chain}:${wallet.address}:${source}:in` : `${e.chain}:${wallet.address}:out`;
           const watermark = Math.max(e.at, ...(s.windows[key] || []).map(x => x.at));
           if (e.at <= watermark - windowMs) continue;
           const rows = (s.windows[key] || []).filter(x => x.at > watermark - windowMs);
           rows.push(e); s.windows[key] = rows;
           const current = rows;
-          const distinct = new Set(current.map(x => accumulation ? x.hash : x.to)).size;
+          // Split sweeps of the same funding transaction are one deposit route.
+          const distinct = new Set(current.map(x => accumulation ? (x.originalSource ? [...x.fundingHashes].sort().join(',') : x.hash) : x.to)).size;
           const threshold = accumulation ? this.rules.count : this.rules.fanoutCount;
           if (distinct < threshold) continue;
           // Same fan-out behavior as original: each new destination count can alert.
@@ -113,17 +117,18 @@ class ExchangeEngine {
           if (s.pending.length >= 10000) throw Error('Exchange alert backlog full; retaining scan cursor');
           const totals = {};
           for (const row of current) totals[row.symbol] = (totals[row.symbol] || 0) + row.usd;
-          const subject = accumulation ? e.from : e.to;
+          const subject = accumulation ? source : e.to;
           const addressUrl = address => `https://arkm.com/explorer/address/${address}`;
           const short = address => `${address.slice(0, 6)}...${address.slice(-4)}`;
           const counterparties = new Map();
           for (const row of current) {
-            const address = accumulation ? row.from : row.to;
+            const address = accumulation ? (row.originalSource || row.from) : row.to;
             counterparties.set(address, (counterparties.get(address) || 0) + row.usd);
           }
           const others = [...counterparties].filter(([address]) => address !== subject);
           s.pending.push({ eventAt: e.at, chain: e.chain, wallet: subject, walletLink: true, txHash: e.hash,
-            countedWallets: [wallet.address, ...counterparties.keys()],
+            exchangeAssetScope: 1,
+            countedWallets: [...new Set([wallet.address, ...counterparties.keys(), ...current.map(r => r.from)])],
             freshOnly: accumulation && this.rules.freshOnly,
             sourceGrouped: accumulation,
             alertId: `exchange:${key}:${e.id}:${distinct}`,
@@ -132,10 +137,17 @@ class ExchangeEngine {
               `${accumulation ? 'Source' : 'Destination'} wallet: \`${short(subject)}\``,
               ...(accumulation ? [`Exchange destination: [${short(wallet.address)}](${addressUrl(wallet.address)})`] : []),
               '',
-              accumulation ? `*${distinct} incoming txns from this source in ${windowMs / 60000} min*` : `*${distinct} destinations in ${windowMs / 60000} min*`,
+              accumulation ? `*${distinct} incoming txns / distinct funded routes from this source in ${windowMs / 60000} min*` : `*${distinct} destinations in ${windowMs / 60000} min*`,
               `Total ${accumulation ? 'received' : 'sent'}: *${money(current.reduce((sum,x) => sum+x.usd, 0))}*`,
               `Each: ≥ ${money(min)}`,
-              ...(accumulation && this.rules.freshOnly ? [`Sources: ≤${this.rules.freshMaxTx} observed txns; ≤${this.rules.freshMaxHours}h history`] : []),
+              ...(accumulation && this.rules.freshOnly ? [`Deposit senders: ≤${this.rules.freshMaxTx} observed txns; ≤${this.rules.freshMaxHours}h history`] : []),
+              ...(accumulation && current.some(r => r.originalSource) ? [
+                'Verified one-hop routes (original source → deposit address → hot wallet):',
+                ...current.filter(r => r.originalSource).slice(-5).map(r => {
+                  const base = r.chain === 'ETH' ? 'https://etherscan.io/tx/' : 'https://tronscan.org/#/transaction/';
+                  return `[${short(r.from)}](${addressUrl(r.from)}) — [funding](${base}${r.fundingHashes[0]}) → [forward](${base}${r.hash})`;
+                }),
+              ] : []),
               `Assets: ${Object.entries(totals).map(([symbol,usd]) => `${symbol} ${money(usd)}`).join(', ')}`,
               '',
               `${accumulation ? 'Sources' : 'Destinations'}:`,

@@ -23,6 +23,9 @@ if (process.env.THORCHAIN_FRESH_ONLY !== 'false') {
 }
 state.update(s => { s.queue = s.queue.filter(item =>
   !(item.alert.alertId?.startsWith('exchange:') && item.alert.alertId.includes(':in:') && item.alert.sourceGrouped !== true)); });
+// Drop legacy exchange summaries that may include removed ETH/DAI assets.
+state.update(s => { s.queue = s.queue.filter(item =>
+  !(item.alert.alertId?.startsWith('exchange:') && item.alert.exchangeAssetScope !== 1)); });
 if (process.env.EXCHANGE_FANOUT_ENABLED !== 'true') {
   state.update(s => { s.queue = s.queue.filter(item =>
     !(item.alert.alertId?.startsWith('exchange:') && item.alert.alertId.includes(':out:'))); });

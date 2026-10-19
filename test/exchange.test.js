@@ -29,7 +29,7 @@ test('disabling exchange fan-out clears its backlog and keeps inflow alerts', t 
   assert.equal(f.store.data.pending.length,1);
   assert.match(f.store.data.pending[0].title,/accumulation/);
 });
-const row = (i, extra = {}) => ({ chain: 'ETH', symbol: 'ETH', from: B, to: A, usd: 50000, id: 't' + i, hash: 't' + i, at: T + i * 60000, ...extra });
+const row = (i, extra = {}) => ({ chain: 'ETH', symbol: 'USDC', from: B, to: A, usd: 50000, id: 't' + i, hash: 't' + i, at: T + i * 60000, ...extra });
 function fixture(t, list = watchlist, config = rules, options) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exchange-test-'));
   t.after(() => { for (const file of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, file)); fs.rmdirSync(dir); });
@@ -99,10 +99,10 @@ test('exchange grouping upgrade discards mixed-source windows and queued summari
 test('exchange accumulation is three >=50k transfers in distinct transactions and survives restart', t => {
   const f = fixture(t); f.engine.commit([row(0), row(1, { symbol: 'USDT' })]);
   const restarted = new ExchangeStore(f.store.file), engine = new ExchangeEngine(restarted, watchlist, rules);
-  engine.commit([row(2, { symbol: 'DAI' })]);
+  engine.commit([row(2, { symbol: 'USDC' })]);
   assert.equal(restarted.data.pending.length, 1);
   assert.match(restarted.data.pending[0].body, /3 incoming txns/);
-  assert.match(restarted.data.pending[0].body, /ETH.*USDT.*DAI/);
+  assert.match(restarted.data.pending[0].body, /USDC.*USDT/);
   engine.commit([row(2)]); assert.equal(restarted.data.pending.length, 1);
   engine.commit([row(3), row(4)]); assert.equal(restarted.data.pending.length, 2);
 });
@@ -150,17 +150,17 @@ test('Ethereum reuses cached full blocks, filters both directions and deduplicat
   assert.equal(f.store.data.pending.length,1); assert.equal(f.store.data.cursors.ETH.number,100);
   assert.deepEqual(f.calls.map(c=>c[0]),['eth_getLogs','eth_getLogs']);
   assert.equal(f.calls[0][1][0].topics[2].length,3); assert.equal(f.calls[1][1][0].topics[1].length,3);
-  assert.equal(f.calls[0][1][0].address.length,3);
+  assert.equal(f.calls[0][1][0].address.length,2);
 });
 test('Ethereum failed log/price requests never advance the dedicated cursor', async t => {
   const f = ethFixture(t,()=>{throw Error('quota');}); await assert.rejects(f.feed.poll(),/quota/); assert.equal(f.store.data.cursors.ETH,undefined);
   const g = ethFixture(t); g.feed.price=async()=>null; await assert.rejects(g.feed.poll(),/price unavailable/); assert.equal(g.store.data.cursors.ETH,undefined);
 });
-test('only qualifying native transfers involving watched wallets fetch receipts; failed transfers are excluded', async t => {
+test('native ETH is excluded without receipt or price requests', async t => {
   const f = ethFixture(t,(m,p)=>m==='eth_getLogs'?[]:{ transactionHash:p[0],blockHash:'h100',status:'0x0' });
   f.block.transactions = [{hash:'native',from:B,to:A,value:'0x'+(50000n*10n**18n).toString(16)},
     {hash:'unwatched',from:B,to:C,value:'0x'+(50000n*10n**18n).toString(16)}];
-  await f.feed.poll(); assert.equal(f.calls.filter(c=>c[0]==='eth_getTransactionReceipt').length,1);
+  await f.feed.poll(); assert.equal(f.calls.filter(c=>c[0]==='eth_getTransactionReceipt').length,0);
   assert.equal(f.store.data.pending.length,0);
 });
 test('ETH receipt mismatch or reorganization retains saved progress', async t => {
@@ -261,7 +261,7 @@ test('fresh-only upgrade removes unverified incoming windows but preserves fan-o
 });
 
 test('ETH freshness accepts short history including gas funding and caches the deposit result', async t => {
-  const config=settings({}),f=fixture(t,watchlist,config),calls=[];
+  const config=settings({EXCHANGE_ONE_HOP:'false'}),f=fixture(t,watchlist,config),calls=[];
   const event=row(0,{blockNumber:100});
   const fresh=new FreshDeposits({engine:f.engine,rules:config,rpc:async(method,params)=>{
     calls.push([method,params]);
@@ -302,7 +302,7 @@ test('freshness does not spend API requests on fan-out, low-value or blocked dep
 });
 
 test('TRON freshness checks both bounded histories, deduplicates hashes and permits gas funding', async t => {
-  const config=settings({}),f=fixture(t,watchlist,config),event=row(0,{chain:'TRON',from:tronFromHex('41'+'11'.repeat(20)),to:watchlist[2].address}),calls=[];
+  const config=settings({EXCHANGE_ONE_HOP:'false'}),f=fixture(t,watchlist,config),event=row(0,{chain:'TRON',from:tronFromHex('41'+'11'.repeat(20)),to:watchlist[2].address}),calls=[];
   const fresh=new FreshDeposits({engine:f.engine,rules:config,request:async(route,params)=>{
     calls.push([route,params]);return {success:true,data:route.endsWith('/trc20')?
       [{transaction_id:event.hash,block_timestamp:event.at}]:
