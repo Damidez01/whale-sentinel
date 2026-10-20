@@ -48,13 +48,22 @@ async function handleDeposit(log, poolAddr, pool) {
     if (!notifyProgress('tc:' + poolAddr, count, incident ? INCIDENT_COUNT : BURST_COUNT)) return;
     const minutes = incident ? INCIDENT_WIN_MIN : BURST_WIN_MIN;
     const totalETH = count * pool.size;
+    const escalating = incident && count > INCIDENT_COUNT;
     sendAlert({ chain:'ETH', eventAt:Date.now(), txHash,
-      title: 'Tornado Cash ' + pool.name + (incident ? ' — Incident update' : ' — Burst'),
+      title: incident
+        ? `🚨 CRITICAL — TC ${pool.name} ${escalating ? 'Escalating' : 'Incident'}`
+        : `🟠 HIGH — TC ${pool.name} Burst`,
       alertId:'tc:progress:' + poolAddr + ':' + txHash + ':' + log.logIndex,
-      body:[count + ' deposits in ' + minutes + ' min',
-        'Total: ' + totalETH + ' ETH (' + fmtUSD(totalETH * (ethPrice || 0)) + ')',
-        'Pool-wide activity; this does not establish a common depositor or theft.',
-        'Further updates at 10, 20, 30… deposits; milestones reset after one hour of quiet.'].join('\n') });
+      body:[
+        `Pool: Tornado Cash ${pool.name}`,
+        '',
+        `${escalating ? 'Now ' : ''}*${count} deposits* in ${minutes} min`,
+        incident ? `Total: *${totalETH} ETH (${fmtUSD(totalETH * (ethPrice || 0))})*`
+          : `Total: ${totalETH} ETH (${fmtUSD(totalETH * (ethPrice || 0))})`,
+        '',
+        incident ? (escalating ? '🔴 Incident still active and growing' : '🔴 High-volume pool activity detected')
+          : '⚠️ Activity spike detected',
+      ].join('\n') });
 
   } catch (err) {
     logger.error('[TC] handleDeposit error', { error: err.message });

@@ -22,7 +22,12 @@ function fixture() {
 test('Tornado emits at 3,10,20,30, suppresses duplicate events and removed logs',async()=>{
   const f=fixture();
   for(let i=1;i<=35;i++)await f.deposit(i);
-  assert.deepEqual(f.sent.map(a=>Number(a.body.split(' ')[0])),[3,10,20,30]);
+  assert.deepEqual(f.sent.map(a=>Number(a.body.match(/\*(\d+) deposits\*/)[1])),[3,10,20,30]);
+  assert.equal(f.sent[0].title,'🟠 HIGH — TC 100 ETH Pool Burst');
+  assert.equal(f.sent[1].title,'🚨 CRITICAL — TC 100 ETH Pool Incident');
+  assert.equal(f.sent[2].title,'🚨 CRITICAL — TC 100 ETH Pool Escalating');
+  assert.match(f.sent[0].body,/⚠️ Activity spike detected/);
+  assert.match(f.sent[2].body,/🔴 Incident still active and growing/);
   await f.deposit(35);await f.deposit(36,{removed:true});assert.equal(f.sent.length,4);
 });
 test('three Tornado deposits spread over more than 15 minutes are not a burst',async()=>{
@@ -30,7 +35,7 @@ test('three Tornado deposits spread over more than 15 minutes are not a burst',a
   await f.deposit(1);f.advance(10*60000);await f.deposit(2);f.advance(10*60000);await f.deposit(3);
   assert.equal(f.sent.length,0);
   for(let i=4;i<=10;i++)await f.deposit(i);
-  assert.ok(f.sent.some(a=>a.body.startsWith('10 deposits in 60 min')));
+  assert.ok(f.sent.some(a=>a.body.includes('*10 deposits* in 60 min')));
 });
 test('100 ETH and 10 ETH pool-wide milestones are independent',async()=>{
   const f=fixture();
@@ -47,5 +52,5 @@ test('three direct 100 ETH deposits plus one 10 ETH deposit produce one pool ale
   await f.deposit('example4',{},'10-pool',10);
   assert.equal(f.sent.length,1);
   assert.match(f.sent[0].title,/100 ETH Pool/);
-  assert.match(f.sent[0].body,/3 deposits in 15 min/);
+  assert.match(f.sent[0].body,/\*3 deposits\* in 15 min/);
 });
