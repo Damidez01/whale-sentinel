@@ -8,6 +8,14 @@ Tornado pool activity alerts initially at three deposits in 15 minutes, then at
 10, 20, 30, etc. deposits in 60 minutes. The burst and incident windows are
 tracked separately. Pool activity does not establish a common source.
 
+Direct deposits use this same pool-wide Deposit-event rule; there is no separate
+per-transaction or per-depositor deposit notification. Direct calls still flag
+the sender for existing intelligence rules. Deposits from different senders
+count together in the same pool, while the 10 ETH and 100 ETH pools stay separate.
+Three 100 ETH deposits followed by one 10 ETH deposit therefore produce one
+100 ETH pool burst alert, provided that pool has not already alerted at that
+milestone. Legacy queued direct-deposit notifications are discarded on upgrade.
+
 General fan-out, rapid accumulation and exchange accumulation now alert at their
 initial threshold, then when either the count reaches 10, 20, 30, etc. or the
 rolling USD total reaches twice the total at the last alert. Both triggers on
@@ -114,7 +122,7 @@ Pending transaction stream on ETH, Base, Arbitrum.
 
 | Alert | Trigger |
 |---|---|
-| 🚨 CRITICAL — TC Deposit | Direct ETH send to TC pool |
+| TC deposit intelligence | Flags the sender; deposit notifications use the pool monitor above |
 | 🟠 HIGH — Structuring | 5+ txns just under $1M in 10 min |
 | 🟠 HIGH — Dormant Wallet | Wallet silent 6+ months moves >$500K |
 | 🚨 CRITICAL — Bridge Exit | Flagged wallet bridges to L2 |

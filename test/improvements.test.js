@@ -86,7 +86,7 @@ test('corrupt persisted state fails instead of erasing exclusions and pending al
   const s = state(t); fs.writeFileSync(s.file, '{broken'); assert.throws(() => new DurableState(s.file));
 });
 function engine() {
-  let now = 10000000; const windows = new Map(), kv = new Map(), alerts = [];
+  let now = 10000000; const windows = new Map(), kv = new Map(), alerts = [], flagged = [];
   const store = {
     windowGet: (k, seconds) => (windows.get(k) || []).filter(x => now - x.at < seconds * 1000).map(x => x.value),
     windowAdd(k, value, seconds) { const rows = (windows.get(k) || []).filter(x => now - x.at < seconds * 1000); rows.push({ value, at: now }); windows.set(k, rows); return rows.length; },
@@ -100,13 +100,22 @@ function engine() {
       if (name === '../alerts/telegram') return { sendAlert: a => alerts.push(a), isBlocked: a => a === 'blocked' };
       if (name === './accumulationExtra') return { extraAccumulation };
       if (name === './exchangeWatchlist') return require('../src/monitors/exchangeWatchlist');
-      if (name === '../intelligence/flagged') return { shortAddr: a => a };
+      if (name === '../intelligence/flagged') return { shortAddr: a => a, flag: (...args) => flagged.push(args) };
       if (name === '../utils/prices') return { fmtUSD: n => '$' + n };
       return {};
     } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/monitors/evm.js'), 'utf8') + '\nmodule.exports.check = checkAccumulationRules; module.exports.fanout=checkFanOut;', sandbox);
-  return { alerts, check: sandbox.module.exports.check, fanout:sandbox.module.exports.fanout, advance: ms => { now += ms; } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/monitors/evm.js'), 'utf8') + '\nmodule.exports.check = checkAccumulationRules; module.exports.fanout=checkFanOut; module.exports.direct=checkDirectTCDeposit;', sandbox);
+  return { alerts, flagged, direct:sandbox.module.exports.direct, check: sandbox.module.exports.check, fanout:sandbox.module.exports.fanout, advance: ms => { now += ms; } };
 }
+test('direct calls to both Tornado pools flag depositors without duplicate notifications',async()=>{
+  const e=engine(), pools=['0xa160cdab225685da1d56aa342ad8841c3b53f291','0x910cbd523d972eb0a6f4cae4618ad62622b39dbf'];
+  for(const [p,to] of pools.entries()) for(let i=1;i<=4;i++)
+    await e.direct({from:A,to,hash:'direct'+p+i,value:(BigInt(p?10:100)*10n**18n).toString()},200000,'ETH');
+  assert.equal(e.alerts.length,0); assert.equal(e.flagged.length,8);
+  await e.direct({from:A,to:pools[0],hash:'other-chain',value:'1'},200000,'BASE');
+  await e.direct({from:'blocked',to:pools[0],hash:'blocked',value:'1'},200000,'ETH');
+  assert.equal(e.alerts.length,0); assert.equal(e.flagged.length,8);
+});
 test('fan-out updates on value doubling and next count milestone',()=>{
   const e=engine();
   for(let i=1;i<=15;i++)e.fanout({from:A,to:'0x'+i.toString(16).padStart(40,'0'),hash:'fan'+i},20000,'ETH');

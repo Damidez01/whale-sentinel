@@ -325,23 +325,10 @@ const CHAIN_CONFIG = [
 // ── Rule 1: Direct TC deposit ────────────────────────────────
 async function checkDirectTCDeposit(tx, usdValue, chain) {
   const to = tx.to?.toLowerCase();
-  if (!TC_POOLS.has(to)) return;
-
-  sendAlert({
-    chain,
-    title: '🚨 CRITICAL — Direct TC Pool Deposit',
-    alertId: `evm:tcdirect:${tx.hash}`,
-    txHash: tx.hash,
-    wallet: tx.from,
-    walletLink: true,
-    body: [
-      `From: \`${shortAddr(tx.from)}\``,
-      `To:   Tornado Cash Pool`,
-      `Amount: *${fmtUSD(usdValue)}*`,
-    ].join('\n'),
-  });
-
+  if (chain !== 'ETH' || !TC_POOLS.has(to) || !tx.from || isBlocked(tx.from)) return;
   flag(tx.from, 'TC_DEPOSIT', tx.hash);
+  // The pool Deposit-event monitor owns all deposit notifications, including
+  // direct calls. Keep intelligence flagging without sending a duplicate.
 }
 
 // ── Rule 2: Chainflip vault large inflow/outflow ─────────────

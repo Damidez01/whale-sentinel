@@ -17,7 +17,7 @@ function fixture() {
     return {};
   }};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/monitors/tornado.js'),'utf8')+'\nmodule.exports.handle=handleDeposit;',sandbox);
-  return {sent,advance:ms=>{now+=ms;},deposit:(i,extra={})=>sandbox.module.exports.handle({transactionHash:'tx'+i,blockNumber:'0x1',logIndex:'0x0',...extra},'pool',{name:'100 ETH Pool',size:100})};
+  return {sent,advance:ms=>{now+=ms;},deposit:(i,extra={},pool='pool',size=100)=>sandbox.module.exports.handle({transactionHash:'tx'+i,blockNumber:'0x1',logIndex:'0x0',...extra},pool,{name:size+' ETH Pool',size})};
 }
 test('Tornado emits at 3,10,20,30, suppresses duplicate events and removed logs',async()=>{
   const f=fixture();
@@ -31,4 +31,21 @@ test('three Tornado deposits spread over more than 15 minutes are not a burst',a
   assert.equal(f.sent.length,0);
   for(let i=4;i<=10;i++)await f.deposit(i);
   assert.ok(f.sent.some(a=>a.body.startsWith('10 deposits in 60 min')));
+});
+test('100 ETH and 10 ETH pool-wide milestones are independent',async()=>{
+  const f=fixture();
+  for(let i=1;i<=10;i++)await f.deposit('large'+i,{},'100-pool',100);
+  await f.deposit('small1',{},'10-pool',10);await f.deposit('small2',{},'10-pool',10);
+  assert.equal(f.sent.length,2);
+  await f.deposit('small3',{},'10-pool',10);
+  assert.equal(f.sent.length,3);assert.match(f.sent[2].title,/10 ETH Pool/);
+  assert.match(f.sent[2].body,/30 ETH/);
+});
+test('three direct 100 ETH deposits plus one 10 ETH deposit produce one pool alert',async()=>{
+  const f=fixture();
+  for(let i=1;i<=3;i++) await f.deposit('example'+i,{},'100-pool',100);
+  await f.deposit('example4',{},'10-pool',10);
+  assert.equal(f.sent.length,1);
+  assert.match(f.sent[0].title,/100 ETH Pool/);
+  assert.match(f.sent[0].body,/3 deposits in 15 min/);
 });

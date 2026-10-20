@@ -9,6 +9,8 @@ const bot     = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 const state = new DurableState(path.join(process.env.TELEGRAM_DATA_DIR || '/data', 'telegram-state.json'));
+// Pool Deposit events now own direct-deposit notifications too.
+state.update(s => { s.queue = s.queue.filter(item => !item.alert.alertId?.startsWith('evm:tcdirect:')); });
 // Older versions could enqueue historical scans using today's enqueue time.
 // Their original event age is unknowable, so discard only these legacy alerts.
 state.update(s => { s.queue = s.queue.filter(item =>

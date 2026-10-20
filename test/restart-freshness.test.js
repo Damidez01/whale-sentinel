@@ -49,6 +49,7 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     ({ id, alert: { alertId: id }, at: NOW, nextAttempt: 0 }));
     d.queue.push({ id: 'fresh', alert: { alertId: 'cf:single:new', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'reply', alert: { text: 'Saved' }, at: NOW, nextAttempt: 0 });
+    d.queue.push({ id: 'direct-legacy', alert: { alertId: 'evm:tcdirect:old', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'unit-unverified', alert: { alertId: 'hyperunit:unverified', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'unit-verified', alert: { alertId: 'hyperunit:verified', eventAt: NOW, unitHistoryVerified: true }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'thor-old', alert: { alertId: 'thor:swap:old', eventAt: NOW }, at: NOW, nextAttempt: 0 });
