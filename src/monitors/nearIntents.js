@@ -26,7 +26,7 @@ function startNearIntentsMonitor() {
     finally { busy=false; }
   };
   started=true; void poll(); setInterval(poll,rules.pollMs);
-  logger.info(`[NEAR] Watching confirmed WBTC outflows >$${engine.min}; polling ${rules.pollMs/1000}s`);
+  logger.info(`[NEAR] WBTC outflows >=$${engine.min}/transaction; grouped by receiver; updates on doubling or 3/10/20 rapid receipts; polling ${rules.pollMs/1000}s`);
   return true;
 }
 module.exports={observeNearBlock,startNearIntentsMonitor};

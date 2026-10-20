@@ -13,12 +13,49 @@ function fixture(t) {
 }
 const event=(id,usd,extra={})=>({id,hash:id,chain:'ETH',symbol:'WBTC',token:WBTC,
   from:HOT,to:A,amount:'200000000',usd,at:Date.now()-60000,...extra});
-test('NEAR strictly over 100k, outgoing WBTC only, stale and self transfers excluded',t=>{
+test('NEAR inclusive 100k per transaction, outgoing WBTC only, stale and self transfers excluded',t=>{
   const f=fixture(t);
   f.engine.commit([event('equal',100000),event('low',99999),event('yes',100001),
     event('in',200000,{from:A,to:HOT}),event('wrong-token',200000,{token:A}),
     event('self',200000,{to:HOT}),event('stale',200000,{at:Date.now()-3600000})]);
-  assert.equal(f.store.data.pending.length,1);assert.equal(f.store.data.pending[0].txHash,'yes');
+  assert.deepEqual(f.store.data.pending.map(a=>a.txHash),['equal','yes']);
+});
+test('NEAR value doubling groups receivers, survives restart, and coalesces rapid and doubled triggers',t=>{
+  const f=fixture(t);
+  f.engine.commit([event('first',200000),event('second',100000)]);
+  assert.equal(f.store.data.pending.length,1);
+  const engine=new NearOutflows(new ExchangeStore(f.store.file));
+  engine.commit([event('third',100000)]);
+  assert.equal(engine.store.data.pending.length,2);
+  assert.match(engine.store.data.pending[1].body,/tracked value doubled; 3 qualifying receipts/);
+  engine.commit([event('third',100000),event('fourth',100000)]);
+  assert.equal(engine.store.data.pending.length,2);
+  engine.commit([event('other',100000,{to:B})]);assert.equal(engine.store.data.pending.length,3);
+  engine.commit([event('fifth',300000)]);assert.equal(engine.store.data.pending.length,4);
+  assert.match(engine.store.data.pending[3].body,/800,000/);
+});
+test('NEAR rapid milestones are 3,10,20 and window dips do not repeat them',t=>{
+  const savedNow=Date.now;let clock=savedNow();Date.now=()=>clock;t.after(()=>{Date.now=savedNow;});
+  const f=fixture(t);
+  for(let i=1;i<=20;i++)f.engine.commit([event('receipt'+i,i===1?1000000:100000,{at:clock-1})]);
+  assert.deepEqual(f.store.data.pending.map(a=>a.txHash),['receipt1','receipt3','receipt10','receipt20']);
+  clock+=16*60000;
+  for(let i=21;i<=23;i++)f.engine.commit([event('receipt'+i,100000,{at:clock-1})]);
+  assert.equal(f.store.data.pending.length,4);
+  clock+=3600000;
+  f.engine.commit([event('new-session',100000,{at:clock-1})]);
+  assert.equal(f.store.data.pending.length,5);
+  assert.equal(f.store.data.nearReceivers[A].count,1);
+});
+test('sub-100k transactions neither combine nor extend the qualifying-receipt session',t=>{
+  const savedNow=Date.now;let clock=savedNow();Date.now=()=>clock;t.after(()=>{Date.now=savedNow;});
+  const f=fixture(t);
+  f.engine.commit([event('small1',60000),event('small2',60000),event('small3',60000)]);
+  assert.equal(f.store.data.pending.length,0);
+  f.engine.commit([event('first',100000,{at:clock-1})]);
+  clock+=30*60000;f.engine.commit([event('small4',90000,{at:clock-1})]);
+  clock+=30*60000;f.engine.commit([event('new',100000,{at:clock-1})]);
+  assert.equal(f.store.data.pending.length,2);assert.equal(f.store.data.nearReceivers[A].count,1);
 });
 test('NEAR same transaction/receiver aggregates logs once, different receivers never combine',t=>{
   const f=fixture(t);

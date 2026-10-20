@@ -28,9 +28,20 @@ an abrupt crash can lose the latest checkpoint interval.
 
 The user-supplied Ethereum hot wallet
 `0x2CfF890f0378a11913B6129B2E97417a2c302680` is watched for outgoing canonical
-WBTC (`0x2260fac5e5542a773aa44fbcfedf7c193bc2c599`, 8 decimals) worth strictly
-more than $100,000. Transfers to different recipients never combine. Multiple
-logs in one transaction to the same recipient combine once. The alert identifies
+WBTC (`0x2260fac5e5542a773aa44fbcfedf7c193bc2c599`, 8 decimals) worth at least
+$100,000 per transaction and recipient. Transfers to different recipients never combine. Multiple
+logs in one transaction to the same recipient combine once. Separate transactions
+below $100,000 do not combine to qualify. The first qualifying receipt alerts;
+subsequent receipts for that wallet update only when its tracked qualifying USD
+total doubles since the last alert, or its 15-minute rolling receipt count reaches
+3, 10, 20, 30, etc. Both triggers together send one update. Every update resets
+the value baseline. Total value accumulates through the active session; it is not
+a 15-minute value window. Reached count milestones do not repeat when counts dip.
+One hour without a qualifying receipt resets the session, using blockchain event
+times. Sub-threshold transfers do not extend it. Counts, totals, milestones and
+baselines persist atomically with the scan cursor and survive restart. Alerts show
+the latest transaction, tracked total, session start and update reason.
+The alert identifies
 the recipient and Ethereum transaction; it does not infer a matched NEAR Intents
 operation, original depositor, or theft.
 
