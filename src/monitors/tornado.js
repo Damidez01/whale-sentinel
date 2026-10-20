@@ -3,6 +3,7 @@ const { windowAdd, windowGet, setKey, getKey } = require('../utils/store');
 const { sendAlert } = require('../alerts/telegram');
 const { getPrice, fmtUSD } = require('../utils/prices');
 const logger = require('../utils/logger');
+const notifyProgress = require('../utils/alertProgress').makeProgress({ getKey, setKey });
 
 // ── Pool config ──────────────────────────────────────────────
 const POOLS = {
@@ -21,12 +22,13 @@ const COORD_WIN_MIN    = Number(process.env.TC_COORDINATED_WINDOW_MIN || 10);
 
 async function handleDeposit(log, poolAddr, pool) {
   try {
+    if (log.removed) return;
     const txHash   = log.transactionHash;
     const blockNum = parseInt(log.blockNumber, 16);
 
     // Dedup
-    if (getKey(`tc:tx:${txHash}`)) return;
-    setKey(`tc:tx:${txHash}`, '1', 3600);
+    if (getKey(`tc:tx:${txHash}:${log.logIndex}`)) return;
+    setKey(`tc:tx:${txHash}:${log.logIndex}`, '1', 3600);
 
     const ethPrice = await getPrice('ETH');
 
@@ -40,62 +42,19 @@ async function handleDeposit(log, poolAddr, pool) {
 
     logger.alert(`[TC] Deposit → ${pool.name} | Block ${blockNum} | Total in ${INCIDENT_WIN_MIN}min: ${totalInWindow} | tx: ${txHash?.slice(0,10)}...`);
 
-    // ── Burst alert (3 deposits in 15 min) ──
-    if (totalInWindow === BURST_COUNT) {
-      const totalETH = BURST_COUNT * pool.size;
-      sendAlert({
-        chain: 'ETH',
-        title: `🟠 HIGH — TC ${pool.name} Burst`,
-        alertId: `tc:burst:${poolAddr}:${totalInWindow}`,
-        txHash,
-        body: [
-          `Pool: Tornado Cash ${pool.name}`,
-          ``,
-          `*${BURST_COUNT} deposits* in ${BURST_WIN_MIN} min`,
-          `Total: ${totalETH} ETH (${fmtUSD(totalETH * (ethPrice || 0))})`,
-          ``,
-          `⚠️ Activity spike detected`,
-        ].join('\n'),
-      });
-    }
-
-    // ── Incident alert (10 deposits in 60 min) ──
-    if (totalInWindow === INCIDENT_COUNT) {
-      const totalETH = INCIDENT_COUNT * pool.size;
-      sendAlert({
-        chain: 'ETH',
-        title: `🚨 CRITICAL — TC ${pool.name} Incident`,
-        alertId: `tc:incident:${poolAddr}:${totalInWindow}`,
-        txHash,
-        body: [
-          `Pool: Tornado Cash ${pool.name}`,
-          ``,
-          `*${INCIDENT_COUNT} deposits* in ${INCIDENT_WIN_MIN} min`,
-          `Total: *${totalETH} ETH (${fmtUSD(totalETH * (ethPrice || 0))})*`,
-          ``,
-          `🔴 Matches large-scale laundering pattern`,
-        ].join('\n'),
-      });
-    }
-
-    // ── Escalation every 5 after incident threshold ──
-    if (totalInWindow > INCIDENT_COUNT && (totalInWindow - INCIDENT_COUNT) % 5 === 0) {
-      const totalETH = totalInWindow * pool.size;
-      sendAlert({
-        chain: 'ETH',
-        title: `🚨 CRITICAL — TC ${pool.name} Escalating`,
-        alertId: `tc:escalate:${poolAddr}:${totalInWindow}`,
-        txHash,
-        body: [
-          `Pool: Tornado Cash ${pool.name}`,
-          ``,
-          `Now *${totalInWindow} deposits* in ${INCIDENT_WIN_MIN} min`,
-          `Total: *${totalETH} ETH (${fmtUSD(totalETH * (ethPrice || 0))})*`,
-          ``,
-          `🔴 Incident still active and growing`,
-        ].join('\n'),
-      });
-    }
+    const burst = windowAdd('tc:pool:burst:' + poolAddr, txHash, BURST_WIN_MIN * 60);
+    const incident = totalInWindow >= INCIDENT_COUNT;
+    const count = incident ? totalInWindow : burst;
+    if (!notifyProgress('tc:' + poolAddr, count, incident ? INCIDENT_COUNT : BURST_COUNT)) return;
+    const minutes = incident ? INCIDENT_WIN_MIN : BURST_WIN_MIN;
+    const totalETH = count * pool.size;
+    sendAlert({ chain:'ETH', eventAt:Date.now(), txHash,
+      title: 'Tornado Cash ' + pool.name + (incident ? ' — Incident update' : ' — Burst'),
+      alertId:'tc:progress:' + poolAddr + ':' + txHash + ':' + log.logIndex,
+      body:[count + ' deposits in ' + minutes + ' min',
+        'Total: ' + totalETH + ' ETH (' + fmtUSD(totalETH * (ethPrice || 0)) + ')',
+        'Pool-wide activity; this does not establish a common depositor or theft.',
+        'Further updates at 10, 20, 30… deposits; milestones reset after one hour of quiet.'].join('\n') });
 
   } catch (err) {
     logger.error('[TC] handleDeposit error', { error: err.message });

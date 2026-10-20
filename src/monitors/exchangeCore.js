@@ -3,6 +3,7 @@ const path = require('path');
 const { normalizeWallet } = require('../utils/addresses');
 const { alertWallets } = require('../utils/alertWallets');
 const { isFresh, freshAlert } = require('../utils/freshness');
+const { progress } = require('../utils/alertProgress');
 
 class ExchangeStore {
   constructor(file) {
@@ -69,6 +70,7 @@ class ExchangeEngine {
       if (kept.length !== rows.length) {
         s.windows[key] = kept;
         delete s.notified[key]; // Allow a new threshold using only eligible rows.
+        if (s.alertProgress) delete s.alertProgress[key];
       }
     }
     s.pending = s.pending.filter(alert => freshAlert(alert) && !alertWallets(alert).some(a => this.isBlocked(a)) &&
@@ -79,6 +81,7 @@ class ExchangeEngine {
     this.store.update(s => {
       this.pruneBlocked(s);
       const sorted = [...events].sort((a,b) => a.at - b.at || (a.order || 0) - (b.order || 0));
+      s.alertProgress ||= {};
       for (const raw of sorted) {
         if (!(raw.chain === 'ETH' ? ['USDC','USDT','DAI'] : ['USDT','TRX']).includes(raw.symbol)) continue;
         if (!isFresh(raw.at)) continue;
@@ -108,12 +111,10 @@ class ExchangeEngine {
           // Split sweeps of the same funding transaction are one deposit route.
           const distinct = new Set(current.map(x => accumulation ? (x.originalSource ? [...x.fundingHashes].sort().join(',') : x.hash) : x.to)).size;
           const threshold = accumulation ? this.rules.count : this.rules.fanoutCount;
-          if (distinct < threshold) continue;
-          // Same fan-out behavior as original: each new destination count can alert.
-          // Accumulation escalates by two distinct transactions after its threshold.
-          if (accumulation && (distinct - threshold) % 2 !== 0) continue;
-          const previous = s.notified[key];
-          if (previous && watermark - previous.at < windowMs && distinct <= previous.count) continue;
+          const update = progress(s.alertProgress[key], distinct, threshold, watermark, 3600000,
+            current.reduce((sum,row) => sum + row.usd, 0));
+          s.alertProgress[key] = update.state;
+          if (!update.notify) continue;
           if (s.pending.length >= 10000) throw Error('Exchange alert backlog full; retaining scan cursor');
           const totals = {};
           for (const row of current) totals[row.symbol] = (totals[row.symbol] || 0) + row.usd;
@@ -164,6 +165,7 @@ class ExchangeEngine {
       for (const [id,at] of Object.entries(s.seen)) if (at < cutoff) delete s.seen[id];
       for (const [key,rows] of Object.entries(s.windows)) s.windows[key] = rows.filter(e => e.at > cutoff);
       for (const [key,row] of Object.entries(s.notified)) if (row.at < cutoff) delete s.notified[key];
+      for (const [key,row] of Object.entries(s.alertProgress)) if (row.at < cutoff) delete s.alertProgress[key];
     });
   }
   flush(sendAlert) {

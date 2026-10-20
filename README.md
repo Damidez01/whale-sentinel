@@ -2,6 +2,47 @@
 
 Crypto incident detection system. Focuses on confirmed suspicious patterns — not noise.
 
+## Quieter alert updates
+
+Tornado pool activity alerts initially at three deposits in 15 minutes, then at
+10, 20, 30, etc. deposits in 60 minutes. The burst and incident windows are
+tracked separately. Pool activity does not establish a common source.
+
+General fan-out, rapid accumulation and exchange accumulation now alert at their
+initial threshold, then when either the count reaches 10, 20, 30, etc. or the
+rolling USD total reaches twice the total at the last alert. Both triggers on
+the same event produce one update; every update establishes a new value baseline.
+Value updates still require the initial count threshold to be satisfied.
+Counts and values still use each rule's rolling
+window. Reaching the same milestone again after a count dips does not repeat an
+alert. An hour without qualifying activity resets the milestone sequence.
+Fan-out groups by sending wallet; accumulation by receiving wallet; exchange
+routes retain their original-source/hot-wallet grouping. Primary and additional
+accumulation share milestones. These remain separate Telegram updates, not edits
+to an earlier message. THORChain and Hyperunit keep their existing doubling rules.
+Exchange milestones persist atomically with their scan state. General EVM and
+Tornado milestones use the existing KV store, checkpointed every 30 seconds;
+an abrupt crash can lose the latest checkpoint interval.
+
+## NEAR Intents WBTC outflows
+
+The user-supplied Ethereum hot wallet
+`0x2CfF890f0378a11913B6129B2E97417a2c302680` is watched for outgoing canonical
+WBTC (`0x2260fac5e5542a773aa44fbcfedf7c193bc2c599`, 8 decimals) worth strictly
+more than $100,000. Transfers to different recipients never combine. Multiple
+logs in one transaction to the same recipient combine once. The alert identifies
+the recipient and Ethereum transaction; it does not infer a matched NEAR Intents
+operation, original depositor, or theft.
+
+Enabled by default with `ALCHEMY_ETH_WSS`; optional
+`NEAR_INTENTS_ENABLED=false` disables it and `NEAR_INTENTS_MIN_USD` changes the
+threshold. Uses existing WBTC pricing, Ethereum block feed, 12-confirmation
+default, and exchange polling/range settings. Requests outgoing WBTC logs only.
+State is `near-intents-state.json` on the existing Telegram data volume.
+Fresh installs start at the confirmed head; stale cursors skip backlog. The
+existing 30-minute freshness limit, durable Telegram delivery, blocked wallets
+and persisted dedup apply. No extra API key is needed.
+
 ## Restarts and alert freshness
 
 The bot monitors recent activity rather than replaying days of missed transfers.
@@ -42,7 +83,7 @@ Direct Deposit event listener on Ethereum mainnet.
 |---|---|
 | 🟠 HIGH — Burst | 3+ deposits to same pool in 15 min |
 | 🚨 CRITICAL — Incident | 10+ deposits to same pool in 60 min |
-| 🚨 CRITICAL — Escalation | Every 5 deposits after the 10th |
+| 🚨 CRITICAL — Escalation | 20, 30, 40, etc. deposits |
 | 🚨 CRITICAL — Coordinated | Volume spike across multiple depositors |
 
 Pools watched:

@@ -43,9 +43,9 @@ ACCUM_EXTRA_COUNT=5
 ACCUM_EXTRA_WIN_MIN=30
 ```
 
-The new rule requires **strictly more than $50,000 per transfer**, five transfers into the same wallet during the rolling 30-minute window. Incoming senders may differ, matching the original receiver-based accumulation model. Exactly $50,000 does not count. It escalates at seven, nine, and subsequent odd counts. These are native ETH values estimated by the existing price service, not DAI/USDT/USDC transfers.
+The new rule requires **strictly more than $50,000 per transfer**, five transfers into the same wallet during the rolling 30-minute window. Incoming senders may differ, matching the original receiver-based accumulation model. Exactly $50,000 does not count. It updates at 10, 20, 30, etc. transfers. These are native ETH values estimated by the existing price service, not DAI/USDT/USDC transfers.
 
-The original rule and its three/five/seven-count escalation continue unchanged. Each original-rule alert suppresses additional-rule messages for that receiver for the original window length (15 minutes by default), while both counters continue updating. This gives the original incident priority rather than sending two alerts for the same accumulation. A later stronger original alert can still follow an earlier lower-threshold alert.
+The original rule starts at three transfers and updates at 10, 20, 30, etc. Primary and additional rules share milestone suppression per receiver and chain, so they do not duplicate initial alerts or reached milestones. Both counters continue updating. One hour without qualifying activity resets the sequence.
 
 Counts use the original bot's processing-time windows and in-memory storage. They reset on process restart; this update does not add historical backfill or change transaction verification. Thresholds alone do not establish stolen origin.
 
@@ -56,3 +56,7 @@ Alerts enter the durable queue before transmission and are acknowledged only aft
 Successful sends retain the existing five-minute dedup interval. If Telegram accepts a message but the response is lost, or the process exits before recording success, a duplicate can arrive. This is at-least-once delivery, not exactly-once. Startup and command responses use the same queue and may be delayed behind pending alerts.
 
 `npm test` runs offline tests with temporary state files and mocked Telegram/RPC inputs. It does not start the bot, send real messages, or consume Alchemy CU. Live command/delivery behavior should be checked after deployment with `/help`, a temporary `/mute`, and `/unblock`.
+
+### Value-doubling updates
+
+Fan-out and accumulation also send an update when the rolling USD total reaches twice the total at the last alert, provided the initial count threshold still holds. Count milestones and value doubling are alternative triggers; one event produces one update. Each update resets the value baseline. Window dips do not reset reached milestones. Tornado remains count-only at 3, 10, 20, 30, etc.

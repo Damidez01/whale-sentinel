@@ -8,6 +8,7 @@ const { startChainflipMonitor } = require('./monitors/chainflip');
 const { startTokenMonitor }     = require('./monitors/tokens');
 const { startExchangeMonitor } = require('./monitors/exchangeMonitor');
 const { startHyperunitMonitor } = require('./monitors/hyperunit');
+const { startNearIntentsMonitor } = require('./monitors/nearIntents');
 const { sendStartup, startTelegram } = require('./alerts/telegram');
 const { getFlaggedCount }       = require('./intelligence/flagged');
 const logger = require('./utils/logger');
@@ -50,6 +51,8 @@ async function main() {
   } catch { logger.error('[UNIT] Could not start; inspect Hyperunit configuration and hyperunit-state.json'); }
 
   // EVM chains
+  try { if(startNearIntentsMonitor()) modules.push('NEAR Intents — WBTC hot-wallet outflows'); }
+  catch { logger.error('[NEAR] Could not start; inspect configuration and near-intents-state.json'); }
   startEVMMonitor();
   modules.push('EVM — ETH, Base, Arbitrum');
 

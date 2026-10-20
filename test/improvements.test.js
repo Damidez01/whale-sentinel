@@ -96,6 +96,7 @@ function engine() {
   const sandbox = { module: { exports: {} }, process: { env: {} }, console, setInterval: () => {},
     require: name => {
       if (name === '../utils/store') return store;
+      if (name === '../utils/alertProgress') return require('../src/utils/alertProgress');
       if (name === '../alerts/telegram') return { sendAlert: a => alerts.push(a), isBlocked: a => a === 'blocked' };
       if (name === './accumulationExtra') return { extraAccumulation };
       if (name === './exchangeWatchlist') return require('../src/monitors/exchangeWatchlist');
@@ -103,23 +104,51 @@ function engine() {
       if (name === '../utils/prices') return { fmtUSD: n => '$' + n };
       return {};
     } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/monitors/evm.js'), 'utf8') + '\nmodule.exports.check = checkAccumulationRules;', sandbox);
-  return { alerts, check: sandbox.module.exports.check, advance: ms => { now += ms; } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/monitors/evm.js'), 'utf8') + '\nmodule.exports.check = checkAccumulationRules; module.exports.fanout=checkFanOut;', sandbox);
+  return { alerts, check: sandbox.module.exports.check, fanout:sandbox.module.exports.fanout, advance: ms => { now += ms; } };
 }
-test('original 100k x 3 and escalating counts remain, without duplicate additional alerts', async () => {
+test('fan-out updates on value doubling and next count milestone',()=>{
+  const e=engine();
+  for(let i=1;i<=15;i++)e.fanout({from:A,to:'0x'+i.toString(16).padStart(40,'0'),hash:'fan'+i},20000,'ETH');
+  assert.equal(e.alerts.length,3);
+  assert.match(e.alerts[0].body,/3 unique destinations/);assert.match(e.alerts[1].body,/6 unique destinations/);
+  assert.match(e.alerts[2].body,/10 unique destinations/);
+});
+test('primary accumulation alerts at three and ten without duplicate additional alerts', async () => {
   const e = engine();
-  for (let i = 0; i < 7; i++) await e.check({ to: A, hash: 't' + i }, 100000, 'ETH');
+  for (let i = 0; i < 10; i++) await e.check({ to: A, hash: 't' + i }, 100000, 'ETH');
   assert.equal(e.alerts.length, 3); assert.ok(e.alerts[0].title.includes('Rapid Fund'));
   assert.ok(e.alerts.slice(1).every(a => a.title.includes('Escalating')));
   assert.ok(e.alerts.every(a => !a.alertId.includes('additional')));
 });
-test('additional >50k x 5 rule is strict, recipient-specific and escalates at seven', async () => {
+test('a large fourth accumulation transfer updates immediately; repeated fan-out recipient can double value',async()=>{
+  const e=engine();
+  for(let i=0;i<3;i++)await e.check({to:A,hash:'small'+i},100000,'ETH');
+  await e.check({to:A,hash:'large'},700000,'ETH');
+  assert.equal(e.alerts.length,2);assert.match(e.alerts[1].body,/1000000/);
+  const f=engine();
+  for(let i=1;i<=3;i++)f.fanout({from:A,to:'0x'+i.toString(16).padStart(40,'0'),hash:'small'+i},20000,'ETH');
+  f.fanout({from:A,to:'0x'+(1).toString(16).padStart(40,'0'),hash:'large'},60000,'ETH');
+  assert.equal(f.alerts.length,2);
+  assert.notEqual(f.alerts[0].alertId,f.alerts[1].alertId);
+});
+test('additional >50k x 5 rule is strict, recipient-specific and quiet at seven', async () => {
   const e = engine();
   for (let i = 0; i < 5; i++) await e.check({ to: A, hash: 'eq' + i }, 50000, 'ETH');
   assert.equal(e.alerts.length, 0);
   for (let i = 0; i < 7; i++) await e.check({ to: A, hash: 'gt' + i }, 50001, 'ETH');
-  assert.equal(e.alerts.length, 2); assert.ok(e.alerts.every(a => a.alertId.includes('additional')));
-  await e.check({ to: B, hash: 'other' }, 60000, 'ETH'); assert.equal(e.alerts.length, 2);
+  assert.equal(e.alerts.length, 1); assert.ok(e.alerts.every(a => a.alertId.includes('additional')));
+  await e.check({ to: B, hash: 'other' }, 60000, 'ETH'); assert.equal(e.alerts.length, 1);
+});
+test('primary and wider additional-window doubling on the same transaction send only one update',async()=>{
+  const e=engine();
+  for(let i=0;i<4;i++)await e.check({to:A,hash:'prior'+i},90000,'ETH');
+  for(let i=0;i<3;i++)await e.check({to:A,hash:'primary'+i},100000,'ETH');
+  // Additional rule first alerts at five; neither subsequent primary threshold
+  // nor a larger overlapping sum should duplicate that incident.
+  assert.equal(e.alerts.length,1);
+  await e.check({to:A,hash:'big'},1000000,'ETH');
+  assert.equal(e.alerts.length,2);
 });
 test('additional rule respects 30-minute expiry and built-in exchange exclusions', async () => {
   const e = engine();

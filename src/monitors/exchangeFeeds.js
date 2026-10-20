@@ -12,7 +12,8 @@ const topic = a => '0x' + a.slice(2).padStart(64, '0');
 const word = /^0x[0-9a-f]{64}$/i;
 
 class EthereumExchangeFeed {
-  constructor({ engine, rpc, price, rules, filterEvents = async events => events }) {
+  constructor({ engine, rpc, price, rules, tokens = TOKENS, outgoingOnly = false, filterEvents = async events => events }) {
+    this.tokens = tokens; this.outgoingOnly = outgoingOnly;
     Object.assign(this, { engine, rpc, price, rules, filterEvents }); this.blocks = new Map(); this.latest = null;
     this.addresses = engine.wallets.filter(w => w.chain === 'ETH').map(w => w.address);
   }
@@ -59,10 +60,10 @@ class EthereumExchangeFeed {
       blocks.push(block); parent = block.hash;
     }
     const logs = [];
-    const filters = [[TRANSFER, null, this.addresses.map(topic)]];
-    if (this.rules.fanoutEnabled) filters.push([TRANSFER, this.addresses.map(topic)]);
+    const filters = this.outgoingOnly ? [[TRANSFER, this.addresses.map(topic)]] : [[TRANSFER, null, this.addresses.map(topic)]];
+    if (!this.outgoingOnly && this.rules.fanoutEnabled) filters.push([TRANSFER, this.addresses.map(topic)]);
     for (const topics of filters) {
-      const result = await this.rpc('eth_getLogs', [{ fromBlock: hex(start), toBlock: hex(end), address: Object.keys(TOKENS), topics }]);
+      const result = await this.rpc('eth_getLogs', [{ fromBlock: hex(start), toBlock: hex(end), address: Object.keys(this.tokens), topics }]);
       if (!Array.isArray(result)) throw Error('Invalid exchange token log response');
       logs.push(...result);
     }
@@ -84,7 +85,7 @@ class EthereumExchangeFeed {
       for (const log of logs.filter(l => Number(BigInt(l.blockNumber)) === number)) {
         if (log.removed || log.blockHash !== block.hash) throw Error('Exchange token log ancestry mismatch');
         if (!block.transactions.some(tx => tx.hash === log.transactionHash)) throw Error('Exchange token transaction missing from block');
-        const token = TOKENS[log.address?.toLowerCase()];
+        const token = this.tokens[log.address?.toLowerCase()];
         if (!token || log.topics?.[0] !== TRANSFER || log.topics.length !== 3 || !log.topics.slice(1).every(t => word.test(t)) || !word.test(log.data)) throw Error('Malformed exchange token transfer');
         const from = '0x' + log.topics[1].slice(-40), to = '0x' + log.topics[2].slice(-40);
         if (!this.addresses.includes(from.toLowerCase()) && !this.addresses.includes(to.toLowerCase())) throw Error('Token result outside watched wallets');

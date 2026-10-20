@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const { windowAdd, windowGet, setKey, getKey } = require('../utils/store');
+const notifyProgress = require('../utils/alertProgress').makeProgress({ getKey, setKey });
 const { flag, flagHop, isFlagged, shortAddr } = require('../intelligence/flagged');
 const { sendAlert, isBlocked } = require('../alerts/telegram');
 const { extraAccumulation } = require('./accumulationExtra');
@@ -411,15 +412,17 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
 
   const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
   const count = windowAdd(key, usdValue, ACCUM_WIN_MIN * 60);
+  const currentTotal = windowGet(key, ACCUM_WIN_MIN * 60).reduce((sum,v) => sum + Number(v), 0);
+  if (!notifyProgress(key, count, ACCUM_COUNT, currentTotal)) return false;
 
-  if (count === ACCUM_COUNT) {
+  if (count < 10) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
     sendAlert({
       chain,
-      title: '🚨 CRITICAL — Rapid Fund Accumulation',
-      alertId: `evm:accum:${chain}:${tx.to}`,
+      title: count === ACCUM_COUNT ? '🚨 CRITICAL — Rapid Fund Accumulation' : '🚨 CRITICAL — Accumulation Escalating',
+      alertId: `evm:accum:${chain}:${tx.to}:${tx.hash}`,
       txHash: tx.hash,
       wallet: tx.to,
       walletLink: true,
@@ -435,14 +438,14 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
     });
   }
 
-  if (count > ACCUM_COUNT && (count - ACCUM_COUNT) % 2 === 0) {
+  if (count >= 10) {
     const all      = windowGet(key, ACCUM_WIN_MIN * 60);
     const totalUSD = all.reduce((s, v) => s + Number(v), 0);
 
     sendAlert({
       chain,
       title: '🚨 CRITICAL — Accumulation Escalating',
-      alertId: `evm:accum:escalate:${chain}:${tx.to}:${count}`,
+      alertId: `evm:accum:escalate:${chain}:${tx.to}:${count}:${tx.hash}`,
       txHash: tx.hash,
       wallet: tx.to,
       walletLink: true,
@@ -456,7 +459,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
       ].join('\n'),
     });
   }
-  return count >= ACCUM_COUNT && (count - ACCUM_COUNT) % 2 === 0;
+  return true;
 }
 
 async function checkAccumulationRules(tx, usdValue, chain) {
@@ -611,15 +614,9 @@ function checkFanOut(tx, usdValue, chain) {
 
   const dests       = windowGet(fanKey, FANOUT_WIN_MIN * 60);
   const uniqueDests = new Set(dests).size;
-  if (uniqueDests < FANOUT_MIN_LEGS) return;
-
-  // Dedup — alert once per (wallet, dest count), escalate every +2 after
-  const alertKey = `fanout:alerted:${chain}:${fromLower}:${uniqueDests}`;
-  if (getKey(alertKey)) return;
-  setKey(alertKey, '1', FANOUT_WIN_MIN * 60);
-
   const vals     = windowGet(valKey, FANOUT_WIN_MIN * 60).map(Number).filter(v => v > 0);
   const totalUSD = vals.reduce((s, v) => s + v, 0);
+  if (!notifyProgress(fanKey, uniqueDests, FANOUT_MIN_LEGS, totalUSD)) return;
   const avgVal   = totalUSD / vals.length;
 
   // Check if any destination is a known no-KYC swap hot wallet
@@ -635,7 +632,7 @@ function checkFanOut(tx, usdValue, chain) {
   sendAlert({
     chain,
     title,
-    alertId: `evm:fanout:${chain}:${fromLower}:${uniqueDests}`,
+    alertId: `evm:fanout:${chain}:${fromLower}:${uniqueDests}:${tx.hash}`,
     txHash: tx.hash,
     wallet: tx.from,
     walletLink: true,
@@ -737,6 +734,8 @@ async function fetchBlock(blockHash, httpUrl, chain) {
       if (chain === 'ETH') {
         try { require('./exchangeMonitor').observeEthereumBlock(data.result); }
         catch { logger.warn('[Exchange:ETH] Could not cache block; original monitoring continues'); }
+        try { require('./nearIntents').observeNearBlock(data.result); }
+        catch { logger.warn('[NEAR] Could not cache Ethereum block'); }
       }
     }
     return data?.result?.transactions || [];

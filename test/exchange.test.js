@@ -104,7 +104,7 @@ test('exchange accumulation is three >=50k transfers in distinct transactions an
   assert.match(restarted.data.pending[0].body, /3 incoming txns/);
   assert.match(restarted.data.pending[0].body, /USDC.*USDT/);
   engine.commit([row(2)]); assert.equal(restarted.data.pending.length, 1);
-  engine.commit([row(3), row(4)]); assert.equal(restarted.data.pending.length, 2);
+  engine.commit([row(3), row(4)]); assert.equal(restarted.data.pending.length, 1);
 });
 test('under-threshold, self-transfers, unrelated wallets and expired windows do not alert', t => {
   const f = fixture(t);
@@ -118,6 +118,14 @@ test('multiple token logs within one transaction cannot satisfy three incoming t
 test('late indexed transfer is evaluated with the already retained window', t => {
   const f = fixture(t); f.engine.commit([row(0), row(2)]); f.engine.commit([row(1)]);
   assert.equal(f.store.data.pending.length, 1);
+});
+test('exchange accumulation value doubling persists across restart and does not repeat on overlap',t=>{
+  const f=fixture(t); f.engine.commit([row(0),row(1),row(2)]);
+  assert.equal(f.store.data.pending.length,1);
+  const engine=new ExchangeEngine(new ExchangeStore(f.store.file),watchlist,rules);
+  engine.commit([row(3,{usd:150000})]); assert.equal(engine.store.data.pending.length,2);
+  assert.match(engine.store.data.pending[1].body,/300,000/);
+  engine.commit([row(3,{usd:150000}),row(4)]); assert.equal(engine.store.data.pending.length,2);
 });
 test('fanout requires three unique destinations and honors destination exclusions', t => {
   const f = fixture(t, watchlist, rules, { ignoreDestination: (_, a) => a === D });

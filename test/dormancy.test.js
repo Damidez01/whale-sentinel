@@ -52,6 +52,7 @@ test('EVM dormancy integration uses verified event time and retries unknown hist
   const sandbox = { module: { exports: {} }, process: { env: { ETHERSCAN_API_KEY: 'test' } },
     setTimeout: fn => fn(), require: name => {
       if (name === './dormancy') return require('../src/monitors/dormancy');
+      if (name === '../utils/alertProgress') return require('../src/utils/alertProgress');
       if (name === '../utils/freshness') return require('../src/utils/freshness');
       if (name === './accumulationExtra') return { extraAccumulation: () => () => {} };
       if (name === '../alerts/telegram') return { sendAlert: a => sent.push(a), isBlocked: () => false };
