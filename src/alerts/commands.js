@@ -20,7 +20,7 @@ function commandHandler(state, { chatId, adminIds = [], now = Date.now } = {}) {
       return rows.map(([a,r]) => `${a}\n${r.until ? 'Muted until ' + new Date(r.until).toISOString() : 'Blocked'} — ${r.reason}`).join('\n\n');
     }
     const replied = state.data.messages[message.reply_to_message?.message_id];
-    if (args[0]?.startsWith('0x') && !normalizeWallet(args[0])) return 'Invalid wallet address. Use 0x followed by 40 hexadecimal characters.';
+    if ((/^0x/i.test(args[0] || '') || /^T[0-9A-Za-z]{29,}$/.test(args[0] || '')) && !normalizeWallet(args[0])) return 'Invalid wallet address. Use a full EVM address or checksum-valid TRON address.';
     const address = normalizeWallet(args[0]) ? normalizeWallet(args.shift()) : replied;
     if (!address) return 'Supply a valid wallet address (0x for EVM, T... for TRON), or reply to a wallet alert sent after this update.\n' + HELP;
     const id = `${message.chat.id}:${message.message_id}`;

@@ -15,6 +15,12 @@ count together in the same pool, while the 10 ETH and 100 ETH pools stay separat
 Three 100 ETH deposits followed by one 10 ETH deposit therefore produce one
 100 ETH pool burst alert, provided that pool has not already alerted at that
 milestone. Legacy queued direct-deposit notifications are discarded on upgrade.
+Both Ethereum Tornado pool contracts are excluded from primary and additional
+rapid accumulation. Legacy queued accumulation notifications for those pools are
+discarded too. Pool burst messages retain the `🟠 HIGH — TC 100 ETH Pool Burst`
+and `🟠 HIGH — TC 10 ETH Pool Burst` titles. When Railway supplies
+`RAILWAY_GIT_COMMIT_SHA`, startup logs show `[Build] Git commit ...` so the running
+release can be compared with GitHub; a push alone does not confirm deployment.
 
 General fan-out, rapid accumulation and exchange accumulation now alert at their
 initial threshold, then when either the count reaches 10, 20, 30, etc. or the

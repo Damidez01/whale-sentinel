@@ -40,6 +40,15 @@ test('group commands fail closed without an explicit authorized user', t => {
   assert.equal(commandHandler(s, { chatId: '-123' })(msg), null);
   assert.match(commandHandler(s, { chatId: '-123', adminIds: ['123'] })(msg), /Saved/);
 });
+test('an invalid explicit address cannot accidentally block the replied wallet',t=>{
+  const s=state(t);s.update(d=>{d.messages[50]=A;});
+  const handle=commandHandler(s,{chatId:'123'});
+  for(const address of ['0Xbad','T'+'0'.repeat(33)]) {
+    assert.match(handle({...message('/block '+address),reply_to_message:{message_id:50}}),/Invalid wallet/);
+    assert.equal(s.isBlocked(A),false);
+  }
+  assert.match(handle({...message('/block Too noisy',2),reply_to_message:{message_id:50}}),/Blocked/);
+});
 test('reply blocks use saved alert metadata; mute expires and replay does not extend it', t => {
   const s = state(t); let now = 100000;
   s.update(d => { d.messages[50] = A; });
@@ -115,6 +124,14 @@ test('direct calls to both Tornado pools flag depositors without duplicate notif
   await e.direct({from:A,to:pools[0],hash:'other-chain',value:'1'},200000,'BASE');
   await e.direct({from:'blocked',to:pools[0],hash:'blocked',value:'1'},200000,'ETH');
   assert.equal(e.alerts.length,0); assert.equal(e.flagged.length,8);
+});
+test('neither rapid nor additional accumulation counts Ethereum Tornado pools',async()=>{
+  const e=engine();
+  for(const to of ['0xA160cdAB225685dA1d56aa342Ad8841c3b53f291','0x910cbd523d972eb0a6f4cae4618ad62622b39dbf'])
+    for(let i=0;i<30;i++)await e.check({to,hash:to+i},i%2?60000:300000,'ETH');
+  assert.equal(e.alerts.length,0);
+  for(let i=0;i<3;i++)await e.check({to:A,hash:'ordinary'+i},100000,'ETH');
+  assert.equal(e.alerts.length,1);
 });
 test('fan-out updates on value doubling and next count milestone',()=>{
   const e=engine();
@@ -199,7 +216,7 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
   await tick();
   assert.ok(sent[0].text.includes('[View on Explorer](https://etherscan.io/tx/trigger-tx)'));
   assert.ok(sent[0].text.includes(`[Wallet on Etherscan](https://etherscan.io/address/${A})`));
-  assert.equal(sent[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'block-wallet');
+  assert.equal(sent[0].options.reply_markup.inline_keyboard[0][0].callback_data, 'block:'+A);
   handlers.callback_query({ id: 'evil', data: 'block-wallet', from: { id: 999 }, message: { message_id: 1, chat: { id: 123, type: 'private' } } });
   assert.equal(api.isBlocked(A), false);
   handlers.callback_query({ id: 'owner', data: 'block-wallet', from: { id: 123 }, message: { message_id: 1, chat: { id: 123, type: 'private' } } });
@@ -207,4 +224,13 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
   handlers.message({ ...message('/unblock', 22), reply_to_message: { message_id: 1 } });
   assert.equal(api.isBlocked(A), false);
   assert.equal(acknowledgements[0], 'Not authorized');
+  assert.equal(acknowledgements[1], 'Wallet blocked and saved');
+  handlers.callback_query({id:'missing',data:'block-wallet',from:{id:123},message:{message_id:99999,chat:{id:123,type:'private'}}});
+  assert.match(acknowledgements.at(-1),/could not be resolved/);
+  handlers.callback_query({id:'new-button',data:'block:'+A,from:{id:123},message:{message_id:99999,chat:{id:123,type:'private'}}});
+  assert.equal(api.isBlocked(A),true);
+  assert.equal(acknowledgements.at(-1),'Wallet blocked and saved');
+  assert.equal(new DurableState(path.join(path.dirname(s.file),'telegram-state.json')).isBlocked(A),true);
+  handlers.callback_query({id:'evil-new',data:'block:'+B,from:{id:999},message:{message_id:99999,chat:{id:123,type:'private'}}});
+  assert.equal(api.isBlocked(B),false);
 });

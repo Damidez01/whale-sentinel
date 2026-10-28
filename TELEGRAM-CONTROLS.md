@@ -60,3 +60,7 @@ Successful sends retain the existing five-minute dedup interval. If Telegram acc
 ### Value-doubling updates
 
 Fan-out and accumulation also send an update when the rolling USD total reaches twice the total at the last alert, provided the initial count threshold still holds. Count milestones and value doubling are alternative triggers; one event produces one update. Each update resets the value baseline. Window dips do not reset reached milestones. Tornado remains count-only at 3, 10, 20, 30, etc.
+
+## Block-button reliability
+
+New Block wallet buttons carry the exact wallet address, so they still work when an old message-to-wallet lookup is unavailable. Existing buttons remain supported when their lookup exists; a missing lookup now shows a clear failure message instead of Request processed. Use /block followed by the full address for old buttons or replies without a lookup. Saved blocks remain in telegram-state.json on the persistent volume. Private-chat commands require the owner; group commands require explicit TELEGRAM_ADMIN_IDS. Blocks suppress queued/future wallet alerts, not past messages, transactions, or pool-wide Tornado activity that has no individual wallet subject. Keep one bot instance polling.

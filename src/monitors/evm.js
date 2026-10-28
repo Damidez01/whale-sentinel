@@ -395,6 +395,7 @@ async function checkChainflip(tx, usdValue, chain) {
 async function checkRapidAccumulation(tx, usdValue, chain) {
   if (usdValue < ACCUM_MIN_USD) return;
   if (!tx.to) return;
+  if (chain === 'ETH' && TC_POOLS.has(tx.to.toLowerCase())) return;
   if (CEX_RECEIVERS.has(tx.to.toLowerCase())) return;
 
   const key   = `accum:${chain}:${tx.to.toLowerCase()}`;
@@ -450,6 +451,7 @@ async function checkRapidAccumulation(tx, usdValue, chain) {
 }
 
 async function checkAccumulationRules(tx, usdValue, chain) {
+  if (chain === 'ETH' && TC_POOLS.has(tx.to?.toLowerCase())) return; // Pool events own Tornado deposit alerts.
   if (isExchangeWallet(tx.to, chain)) return; // Dedicated watchlist owns these alerts.
   if (!tx.to || CEX_RECEIVERS.has(tx.to.toLowerCase()) || isBlocked(tx.to)) return;
   const primaryTriggered = await checkRapidAccumulation(tx, usdValue, chain);

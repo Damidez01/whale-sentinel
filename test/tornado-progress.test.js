@@ -44,6 +44,7 @@ test('100 ETH and 10 ETH pool-wide milestones are independent',async()=>{
   assert.equal(f.sent.length,2);
   await f.deposit('small3',{},'10-pool',10);
   assert.equal(f.sent.length,3);assert.match(f.sent[2].title,/10 ETH Pool/);
+  assert.equal(f.sent[2].title,'🟠 HIGH — TC 10 ETH Pool Burst');
   assert.match(f.sent[2].body,/30 ETH/);
 });
 test('three direct 100 ETH deposits plus one 10 ETH deposit produce one pool alert',async()=>{

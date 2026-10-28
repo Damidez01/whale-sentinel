@@ -25,6 +25,8 @@ if (missing.length) {
 // ── Startup ──────────────────────────────────────────────────
 async function main() {
   logger.info('🐕 ChainHound v2 starting...');
+  const build = process.env.RAILWAY_GIT_COMMIT_SHA;
+  if (/^[0-9a-f]{7,64}$/i.test(build || '')) logger.info(`[Build] Git commit ${build.slice(0, 12)}`);
   startTelegram();
 
   const modules = [];

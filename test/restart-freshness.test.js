@@ -50,6 +50,9 @@ test('Telegram upgrade discards legacy scanner alerts even with recent enqueue t
     d.queue.push({ id: 'fresh', alert: { alertId: 'cf:single:new', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'reply', alert: { text: 'Saved' }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'direct-legacy', alert: { alertId: 'evm:tcdirect:old', eventAt: NOW }, at: NOW, nextAttempt: 0 });
+    for(const wallet of ['0xa160cdab225685da1d56aa342ad8841c3b53f291','0x910cbd523d972eb0a6f4cae4618ad62622b39dbf'])
+      for(const kind of ['', 'additional:', 'escalate:']) d.queue.push({id:'pool-'+wallet+kind,
+        alert:{alertId:'evm:accum:'+kind+'ETH:'+wallet,wallet,chain:'ETH',eventAt:NOW},at:NOW,nextAttempt:0});
     d.queue.push({ id: 'unit-unverified', alert: { alertId: 'hyperunit:unverified', eventAt: NOW }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'unit-verified', alert: { alertId: 'hyperunit:verified', eventAt: NOW, unitHistoryVerified: true }, at: NOW, nextAttempt: 0 });
     d.queue.push({ id: 'thor-old', alert: { alertId: 'thor:swap:old', eventAt: NOW }, at: NOW, nextAttempt: 0 });

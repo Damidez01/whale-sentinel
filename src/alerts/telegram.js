@@ -11,6 +11,10 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const state = new DurableState(path.join(process.env.TELEGRAM_DATA_DIR || '/data', 'telegram-state.json'));
 // Pool Deposit events now own direct-deposit notifications too.
 state.update(s => { s.queue = s.queue.filter(item => !item.alert.alertId?.startsWith('evm:tcdirect:')); });
+// Discard already-queued generic accumulation alerts for the Tornado pools.
+const tcPools = new Set(['0xa160cdab225685da1d56aa342ad8841c3b53f291', '0x910cbd523d972eb0a6f4cae4618ad62622b39dbf']);
+state.update(s => { s.queue = s.queue.filter(({alert}) =>
+  !(alert.chain === 'ETH' && alert.alertId?.startsWith('evm:accum:') && tcPools.has(normalizeWallet(alert.wallet)))); });
 // Older versions could enqueue historical scans using today's enqueue time.
 // Their original event age is unknowable, so discard only these legacy alerts.
 state.update(s => { s.queue = s.queue.filter(item =>
@@ -94,7 +98,7 @@ const delivery = new Delivery(state, {
     ...(!plain && !alert.plain ? { parse_mode: 'Markdown' } : {}),
     disable_web_page_preview: false,
     ...(normalizeWallet(alert.wallet) ?
-      { reply_markup: { inline_keyboard: [[{ text: 'Block wallet', callback_data: 'block-wallet' }]] } } : {}),
+      { reply_markup: { inline_keyboard: [[{ text: 'Block wallet', callback_data: 'block:' + normalizeWallet(alert.wallet) }]] } } : {}),
   }),
   onError: code => logger.warn(`[Telegram] Delivery pending; retry scheduled (${code})`),
 });
@@ -115,12 +119,15 @@ function startTelegram() {
   });
   bot.on('polling_error', () => logger.warn('[Telegram] Command polling failed; check bot credentials and ensure only one instance is polling'));
   bot.on('callback_query', query => {
-    if (query.data !== 'block-wallet' || !query.message) return;
+    const explicitWallet = query.data?.startsWith('block:') ? normalizeWallet(query.data.slice(6)) : null;
+    if ((query.data !== 'block-wallet' && !explicitWallet) || !query.message) return;
     try {
       const response = handleCommand({ from: query.from, chat: query.message.chat, message_id: `callback:${query.id}`,
-        text: '/block', reply_to_message: { message_id: query.message.message_id } });
+        text: explicitWallet ? '/block ' + explicitWallet : '/block', reply_to_message: { message_id: query.message.message_id } });
       if (response) sendAlert({ text: response, plain: true });
-      bot.answerCallbackQuery(query.id, { text: response ? 'Request processed' : 'Not authorized' }).catch(() => {});
+      const feedback = !response ? 'Not authorized' : response.startsWith('Blocked ') ? 'Wallet blocked and saved' :
+        response.startsWith('This command') ? 'Already applied' : 'Wallet could not be resolved. Use /block followed by the full address.';
+      bot.answerCallbackQuery(query.id, { text: feedback }).catch(() => {});
     } catch { bot.answerCallbackQuery(query.id, { text: 'Could not save this change' }).catch(() => {}); }
   });
   bot.options.polling = { params: { timeout: 30, allowed_updates: ['message', 'callback_query'] } };
