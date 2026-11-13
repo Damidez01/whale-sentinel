@@ -45,32 +45,3 @@ test('mismatched block, unknown receipt success and invalid dates are rejected',
   await assert.rejects(inspect([{ ...current, txreceipt_status: '' }, prior(7)]), /unverified/);
   await assert.rejects(inspect([current, prior(7, { timeStamp: 'invalid' })]), /timestamp/);
 });
-
-test('EVM dormancy integration uses verified event time and retries unknown history without false alerts', async () => {
-  const fs = require('fs'), path = require('path'), vm = require('vm');
-  const sent = [], warnings = []; let calls = 0, unavailable = false;
-  const sandbox = { module: { exports: {} }, process: { env: { ETHERSCAN_API_KEY: 'test' } },
-    setTimeout: fn => fn(), require: name => {
-      if (name === './dormancy') return require('../src/monitors/dormancy');
-      if (name === '../utils/alertProgress') return require('../src/utils/alertProgress');
-      if (name === '../utils/freshness') return require('../src/utils/freshness');
-      if (name === './accumulationExtra') return { extraAccumulation: () => () => {} };
-      if (name === '../alerts/telegram') return { sendAlert: a => sent.push(a), isBlocked: () => false };
-      if (name === '../utils/prices') return { fmtUSD: String };
-      if (name === '../intelligence/flagged') return { shortAddr: String };
-      if (name === '../utils/logger') return { warn: s => warnings.push(s) };
-      if (name === 'axios') return { get: async (url, { params }) => {
-        calls++; assert.equal(params.chainid, 1);
-        return { data: unavailable ? { status: '0' } : { status: '1', result: [current, prior(7)] } };
-      } };
-      return {};
-    } };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/monitors/evm.js'), 'utf8') +
-    '\nmodule.exports.checkDormantWallet = checkDormantWallet;', sandbox);
-  const check = sandbox.module.exports.checkDormantWallet;
-  await check(tx, 500000, 'ETH'); assert.equal(sent.length, 1); assert.equal(sent[0].eventAt, NOW);
-  assert.match(sent[0].body, /No outgoing transactions/); assert.doesNotMatch(sent[0].body, /Silent for/);
-  unavailable = true; calls = 0;
-  await check(tx, 500000, 'ETH'); assert.equal(calls, 3); assert.equal(sent.length, 1); assert.equal(warnings.length, 1);
-  calls = 0; await check(tx, 499999, 'ETH'); await check(tx, 500000, 'BASE'); assert.equal(calls, 0);
-});

@@ -185,6 +185,8 @@ test('additional rule respects 30-minute expiry and built-in exchange exclusions
 });
 test('Telegram integration delivers buttons and only the owner can use callbacks or reply commands', async t => {
   const s = state(t), sent = [], handlers = {}, acknowledgements = [];
+  const telegramState = new DurableState(path.join(path.dirname(s.file), 'telegram-state.json'));
+  telegramState.update(data => { data.queue.push({ id: 'retired', alert: { alertId: 'evm:dormant:old', eventAt: Date.now() } }); });
   let tick, client;
   class Bot {
     constructor(token, options) { this.options = options; client = this; }
@@ -204,6 +206,7 @@ test('Telegram integration delivers buttons and only the owner can use callbacks
     } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/alerts/telegram.js'), 'utf8') + '\nmodule.exports.buildMessage = buildMessage;', sandbox);
   const api = sandbox.module.exports;
+  assert.equal(new DurableState(telegramState.file).data.queue.length, 0, 'queued wallet-resuming alert removed on startup');
   const unitText = api.buildMessage({chain:'UNIT',wallet:A,walletLink:true,txHash:'unit-tx',title:'Unit deposit',body:'Deposit'});
   assert.ok(unitText.includes(`[View on Explorer](https://explorer.hyperunit.xyz/addresses/${A})`));
   assert.ok(unitText.includes(`[Account on Hypurrscan](https://hypurrscan.io/address/${A})`));

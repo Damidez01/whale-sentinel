@@ -9,6 +9,8 @@ const bot     = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 const state = new DurableState(path.join(process.env.TELEGRAM_DATA_DIR || '/data', 'telegram-state.json'));
+// Wallet-resuming alerts are disabled; discard any pending delivery on upgrade.
+state.update(s => { s.queue = s.queue.filter(item => !item.alert.alertId?.startsWith('evm:dormant:')); });
 // Pool Deposit events now own direct-deposit notifications too.
 state.update(s => { s.queue = s.queue.filter(item => !item.alert.alertId?.startsWith('evm:tcdirect:')); });
 // Discard already-queued generic accumulation alerts for the Tornado pools.

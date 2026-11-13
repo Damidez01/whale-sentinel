@@ -13,8 +13,6 @@ const { checkDeployment, confirmTokenContract, checkHopTransfer } = require('./t
 const STRUCT_COUNT      = Number(process.env.STRUCTURING_COUNT         || 5);
 const STRUCT_WIN_MIN    = Number(process.env.STRUCTURING_WINDOW_MIN    || 10);
 const STRUCT_USD        = Number(process.env.STRUCTURING_THRESHOLD_USD || 900_000);
-const DORMANT_MONTHS    = Number(process.env.DORMANT_MONTHS            || 6);
-const DORMANT_USD       = Number(process.env.DORMANT_MIN_USD           || 500_000);
 const ACCUM_MIN_USD     = Number(process.env.ACCUM_MIN_USD             || 100_000);
 const ACCUM_COUNT       = Number(process.env.ACCUM_COUNT               || 3);
 const ACCUM_WIN_MIN     = Number(process.env.ACCUM_WIN_MIN             || 15);
@@ -520,50 +518,6 @@ async function checkFlaggedWallet(tx, usdValue, chain) {
   if (tx.to) flagHop(tx.to, tx.from);
 }
 
-// ── Rule 6: Dormant wallet ───────────────────────────────────
-async function checkDormantWallet(tx, usdValue, chain) {
-  if (usdValue < DORMANT_USD || chain !== 'ETH' || !process.env.ETHERSCAN_API_KEY || isBlocked(tx.from)) return;
-  const { inspectDormancy } = require('./dormancy');
-  const { isFresh } = require('../utils/freshness');
-  const axios = require('axios');
-  // Explorer indexing can trail the live block feed. Retry boundedly, without
-  // blocking other rules or interpreting a failed lookup as a dormant wallet.
-  let history;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      history = await inspectDormancy(tx, { months: DORMANT_MONTHS, request: async params =>
-        (await axios.get('https://api.etherscan.io/v2/api', { params: { ...params, chainid: 1,
-          apikey: process.env.ETHERSCAN_API_KEY }, timeout: 15000 })).data });
-      break;
-    } catch {
-      if (attempt === 2) { logger.warn('[EVM:ETH] Dormancy history unverified; alert skipped'); return; }
-      await new Promise(resolve => setTimeout(resolve, 15000));
-    }
-  }
-  if (history && isFresh(history.eventAt) && !isBlocked(tx.from)) {
-    sendAlert({
-      chain,
-      eventAt: history.eventAt,
-      title: '🟠 HIGH — Wallet Resumes Sending',
-      alertId: `evm:dormant:${tx.hash}`,
-      txHash: tx.hash,
-      wallet: tx.from,
-      walletLink: true,
-      body: [
-        `Wallet: \`${shortAddr(tx.from)}\``,
-        ``,
-        `No outgoing transactions for *${history.months.toFixed(1)} months*`,
-        `Previous outgoing: ${new Date(history.previousAt).toUTCString()}`,
-        `Scope: Ethereum outgoing transactions only`,
-        `Now moving: *${fmtUSD(usdValue)}*`,
-        ``,
-        `⚠️ Large transfer after outgoing inactivity`,
-      ].join('\n'),
-    });
-  }
-
-}
-
 // ── Rule 7: Fan-out ──────────────────────────────────────────
 //
 // Pure outbound pattern — no inflow requirement.
@@ -688,7 +642,6 @@ async function handleTx(tx, chain, httpUrl, deployWatchOnly = false) {
       checkAccumulationRules(tx, usdValue, chain),
       checkStructuring(tx, usdValue, chain),
       checkFlaggedWallet(tx, usdValue, chain),
-      checkDormantWallet(tx, usdValue, chain),
     ]);
 
   } catch (err) {
